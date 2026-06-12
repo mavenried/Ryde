@@ -1,15 +1,10 @@
 package me.mavenried.Ryde.ui.components
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
-import androidx.compose.ui.graphics.Paint
 import com.google.android.gms.maps.CameraUpdateFactory
+import me.mavenried.Ryde.ui.theme.LocalIsDarkTheme
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.maps.android.compose.*
@@ -42,28 +37,6 @@ fun RouteMapView(
     activityType: ActivityType,
     modifier: Modifier = Modifier
 ) {
-    val darkTheme = isSystemInDarkTheme()
-    val mapModifier = if (darkTheme) {
-        // invert(100%) hue-rotate(180deg) — keeps map colours natural in dark mode
-        val invertPaint = Paint().apply {
-            colorFilter = ColorFilter.colorMatrix(
-                ColorMatrix(floatArrayOf(
-                     0.574f, -1.430f, -0.144f, 0f, 255f,
-                    -0.426f, -0.430f, -0.144f, 0f, 255f,
-                    -0.426f, -1.430f,  0.856f, 0f, 255f,
-                     0f,      0f,      0f,     1f,   0f
-                ))
-            )
-        }
-        modifier.drawWithContent {
-            drawContext.canvas.saveLayer(
-                Rect(0f, 0f, size.width, size.height), invertPaint
-            )
-            drawContent()
-            drawContext.canvas.restore()
-        }
-    } else modifier
-
     val cameraPositionState = rememberCameraPositionState()
     var mapLoaded by remember { mutableStateOf(false) }
 
@@ -77,9 +50,10 @@ fun RouteMapView(
     }
 
     GoogleMap(
-        modifier = mapModifier,
+        modifier = modifier,
         cameraPositionState = cameraPositionState,
         onMapLoaded = { mapLoaded = true },
+        mapColorScheme = if (LocalIsDarkTheme.current) ComposeMapColorScheme.DARK else ComposeMapColorScheme.LIGHT,
         properties = MapProperties(),
         uiSettings = MapUiSettings(
             myLocationButtonEnabled = false,

@@ -7,12 +7,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import me.mavenried.Ryde.ui.nav.AppNavigation
 import me.mavenried.Ryde.ui.theme.RydeTheme
+import me.mavenried.Ryde.util.UserPrefs
 
 class MainActivity : ComponentActivity() {
 
@@ -23,9 +27,17 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        UserPrefs.initTheme(this)
         requestInitialPermissions()
         setContent {
-            RydeTheme {
+            val theme by UserPrefs.themeFlow.collectAsState()
+            val systemDark = isSystemInDarkTheme()
+            val darkTheme = when (theme) {
+                "dark" -> true
+                "light" -> false
+                else -> systemDark
+            }
+            RydeTheme(darkTheme = darkTheme) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

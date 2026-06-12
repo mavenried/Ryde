@@ -27,6 +27,7 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
     val context = LocalContext.current
     val useLbs = remember { mutableStateOf(UserPrefs.useLbs(context)) }
     val weightKg = remember { mutableStateOf(UserPrefs.getWeightKg(context)) }
+    var theme by remember { mutableStateOf(UserPrefs.getTheme(context)) }
     var showLogsDialog by remember { mutableStateOf(false) }
 
     val displayValue = remember(useLbs.value, weightKg.value) {
@@ -108,6 +109,29 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
                 )
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text("Appearance", style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary)
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Theme", style = MaterialTheme.typography.bodyMedium)
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    listOf("system" to "System", "light" to "Light", "dark" to "Dark")
+                        .forEachIndexed { index, (value, label) ->
+                            SegmentedButton(
+                                selected = theme == value,
+                                onClick = {
+                                    theme = value
+                                    UserPrefs.setTheme(context, value)
+                                },
+                                shape = SegmentedButtonDefaults.itemShape(index, 3),
+                                label = { Text(label) }
+                            )
+                        }
+                }
             }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))

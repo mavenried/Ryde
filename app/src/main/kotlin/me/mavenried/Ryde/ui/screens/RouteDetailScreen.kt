@@ -3,8 +3,10 @@ package me.mavenried.Ryde.ui.screens
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -14,6 +16,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -98,19 +103,24 @@ fun RouteDetailScreen(
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-        ) {
-            RouteMapView(
-                points = points,
-                activityType = route?.activityType ?: ActivityType.RUNNING,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(280.dp)
-            )
+        Column(modifier = Modifier.padding(padding)) {
+            Box {
+                RouteMapView(
+                    points = points,
+                    activityType = route?.activityType ?: ActivityType.RUNNING,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(280.dp)
+                )
+                SpeedLegend(
+                    activityType = route?.activityType ?: ActivityType.RUNNING,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(10.dp)
+                )
+            }
 
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
             if (points.isNotEmpty()) {
                 Text(
                     "Elevation Profile",
@@ -128,12 +138,14 @@ fun RouteDetailScreen(
 
             route?.let { r ->
                 val durationMs = r.endTime - r.startTime
-                val mins = durationMs / 60_000
+                val hours = durationMs / 3_600_000
+                val mins = (durationMs % 3_600_000) / 60_000
                 val secs = (durationMs % 60_000) / 1000
 
                 val stats = buildList {
                     add("Distance" to "%.2f km".format(r.distanceKm))
-                    add("Duration" to "%d:%02d".format(mins, secs))
+                    add("Duration" to if (hours > 0) "%d:%02d:%02d".format(hours, mins, secs)
+                                      else "%d:%02d".format(mins, secs))
                     add("Elevation" to "+%.0f m".format(r.elevationGainM))
                     if (r.activityType == ActivityType.CYCLING) {
                         add("Avg Speed" to if (r.avgSpeedKmh > 0) "%.1f km/h".format(r.avgSpeedKmh) else "--")
@@ -184,6 +196,55 @@ fun RouteDetailScreen(
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator()
+            }
+            } // end scrollable column
+        }
+    }
+}
+
+@Composable
+private fun SpeedLegend(activityType: ActivityType, modifier: Modifier = Modifier) {
+    val (slowMs, fastMs) = when (activityType) {
+        ActivityType.RUNNING -> 2f to 4.5f
+        ActivityType.CYCLING -> 3f to 9f
+        ActivityType.WALKING -> 0.8f to 2f
+    }
+    val slowKmh = (slowMs * 3.6).toInt()
+    val fastKmh = (fastMs * 3.6).toInt()
+    val gradientColors = listOf(
+        Color(0xFF2979FF.toInt()),  // slow
+        Color(0xFF00E676.toInt()),  // mid
+        Color(0xFFFF1744.toInt()),  // fast
+    )
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+        tonalElevation = 2.dp
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+            Box(
+                modifier = Modifier
+                    .width(100.dp)
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Brush.horizontalGradient(gradientColors))
+            )
+            Spacer(Modifier.height(3.dp))
+            Row(
+                modifier = Modifier.width(100.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    "$slowKmh km/h",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+                Text(
+                    "$fastKmh km/h",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
             }
         }
     }

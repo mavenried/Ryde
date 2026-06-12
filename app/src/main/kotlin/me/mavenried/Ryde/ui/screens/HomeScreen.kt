@@ -14,7 +14,6 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -236,18 +235,23 @@ private fun IdleContent(
             modifier = Modifier.fillMaxSize()
         )
 
-        IconButton(
-            onClick = onSettings,
+        Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(8.dp)
                 .statusBarsPadding()
+                .padding(12.dp)
+                .background(
+                    MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.80f),
+                    RoundedCornerShape(12.dp)
+                )
         ) {
-            Icon(
-                Icons.Rounded.Settings,
-                contentDescription = "Settings",
-                tint = Color.White.copy(alpha = 0.9f)
-            )
+            IconButton(onClick = onSettings) {
+                Icon(
+                    Icons.Rounded.Settings,
+                    contentDescription = "Settings",
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+            }
         }
 
         Surface(
@@ -340,7 +344,10 @@ private fun ActiveContent(
                 .align(Alignment.TopCenter)
                 .statusBarsPadding()
                 .padding(top = 12.dp)
-                .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                .background(
+                    MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.80f),
+                    RoundedCornerShape(12.dp)
+                )
                 .padding(horizontal = 14.dp, vertical = 6.dp)
         ) {
             RydeLogo(

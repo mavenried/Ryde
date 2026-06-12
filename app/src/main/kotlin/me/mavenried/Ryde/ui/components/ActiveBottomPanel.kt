@@ -187,6 +187,14 @@ internal fun MusicRow() {
     val audioManager = remember {
         context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     }
+    var volumeFraction by remember { mutableStateOf<Float?>(null) }
+    var volumeResetKey by remember { mutableStateOf(0) }
+    LaunchedEffect(volumeResetKey) {
+        if (volumeResetKey > 0) {
+            delay(1000L)
+            volumeFraction = null
+        }
+    }
 
     Column {
         Row(
@@ -305,21 +313,19 @@ internal fun MusicRow() {
                 Icon(Icons.Rounded.SkipNext, contentDescription = "Next")
             }
             IconButton(onClick = {
-                audioManager.adjustStreamVolume(
-                    AudioManager.STREAM_MUSIC,
-                    AudioManager.ADJUST_LOWER,
-                    AudioManager.FLAG_SHOW_UI
-                )
+                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, 0)
+                volumeFraction = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() /
+                    audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                volumeResetKey++
             }) {
                 Icon(Icons.Rounded.VolumeDown, contentDescription = "Volume down",
                     modifier = Modifier.size(20.dp))
             }
             IconButton(onClick = {
-                audioManager.adjustStreamVolume(
-                    AudioManager.STREAM_MUSIC,
-                    AudioManager.ADJUST_RAISE,
-                    AudioManager.FLAG_SHOW_UI
-                )
+                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, 0)
+                volumeFraction = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() /
+                    audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                volumeResetKey++
             }) {
                 Icon(Icons.Rounded.VolumeUp, contentDescription = "Volume up",
                     modifier = Modifier.size(20.dp))
@@ -343,7 +349,10 @@ internal fun MusicRow() {
                     displayPosition = np.positionMs
                 }
             }
-            val fraction = (displayPosition.toFloat() / np.durationMs).coerceIn(0f, 1f)
+            val vf = volumeFraction
+            val fraction = (vf ?: (displayPosition.toFloat() / np.durationMs)).coerceIn(0f, 1f)
+            val barColor = if (vf != null) MaterialTheme.colorScheme.tertiary
+                           else MaterialTheme.colorScheme.primary
             Box(modifier = Modifier.fillMaxWidth().height(2.dp)) {
                 Box(
                     modifier = Modifier
@@ -354,7 +363,7 @@ internal fun MusicRow() {
                     modifier = Modifier
                         .fillMaxHeight()
                         .fillMaxWidth(fraction)
-                        .background(MaterialTheme.colorScheme.primary)
+                        .background(barColor)
                 )
             }
         }

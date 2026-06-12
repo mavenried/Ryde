@@ -2,18 +2,13 @@ package me.mavenried.Ryde.ui.components
 
 import android.Manifest
 import android.content.pm.PackageManager
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
-import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.LocationServices
+import me.mavenried.Ryde.ui.theme.LocalIsDarkTheme
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
@@ -117,31 +112,10 @@ fun TrackingMapView(
         }
     }
 
-    val darkTheme = isSystemInDarkTheme()
-    val mapModifier = if (darkTheme) {
-        // invert(100%) hue-rotate(180deg) — keeps map colours natural in dark mode
-        val invertPaint = Paint().apply {
-            colorFilter = ColorFilter.colorMatrix(
-                ColorMatrix(floatArrayOf(
-                     0.574f, -1.430f, -0.144f, 0f, 255f,
-                    -0.426f, -0.430f, -0.144f, 0f, 255f,
-                    -0.426f, -1.430f,  0.856f, 0f, 255f,
-                     0f,      0f,      0f,     1f,   0f
-                ))
-            )
-        }
-        modifier.drawWithContent {
-            drawContext.canvas.saveLayer(
-                Rect(0f, 0f, size.width, size.height), invertPaint
-            )
-            drawContent()
-            drawContext.canvas.restore()
-        }
-    } else modifier
-
     GoogleMap(
-        modifier = mapModifier,
+        modifier = modifier,
         cameraPositionState = cameraPositionState,
+        mapColorScheme = if (LocalIsDarkTheme.current) ComposeMapColorScheme.DARK else ComposeMapColorScheme.LIGHT,
         properties = MapProperties(
             isMyLocationEnabled = hasLocation
         ),

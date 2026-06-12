@@ -153,7 +153,7 @@ private fun TotalStatsHeader(stats: me.mavenried.Ryde.ui.viewmodel.TotalStats) {
             Row(modifier = Modifier.fillMaxWidth()) {
                 StatItem(
                     label = "TOTAL DIST",
-                    value = "%.1f km".format(stats.totalDistanceKm),
+                    value = "%.2f km".format(stats.totalDistanceKm),
                     modifier = Modifier.weight(1f)
                 )
                 StatItem(
@@ -163,7 +163,12 @@ private fun TotalStatsHeader(stats: me.mavenried.Ryde.ui.viewmodel.TotalStats) {
                 )
                 StatItem(
                     label = "TOTAL TIME",
-                    value = "%dh".format(stats.totalDurationMs / 3_600_000),
+                    value = run {
+                        val h = stats.totalDurationMs / 3_600_000
+                        val m = (stats.totalDurationMs % 3_600_000) / 60_000
+                        val s = (stats.totalDurationMs % 60_000) / 1000
+                        if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
+                    },
                     modifier = Modifier.weight(1f)
                 )
             }
