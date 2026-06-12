@@ -1,6 +1,8 @@
 package me.mavenried.Ryde.ui.components
 
+import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.provider.Settings
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -20,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import me.mavenried.Ryde.domain.model.ActivityType
 import me.mavenried.Ryde.service.MediaListenerService
 import me.mavenried.Ryde.service.TrackingState
@@ -103,6 +106,31 @@ fun ActiveBottomPanel(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
+            // Auto-pause banner
+            if (state.isAutoPaused) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        Icons.Rounded.PauseCircle,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.tertiary
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        "Auto-paused — move to resume",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                }
+            }
+
             // Action buttons
             Row(
                 modifier = Modifier
@@ -146,131 +174,189 @@ fun ActiveBottomPanel(
 }
 
 @Composable
-private fun MusicRow() {
+internal fun MusicRow() {
     val context = LocalContext.current
     val hasPermission = remember { mutableStateOf(PermissionHelper.hasNotificationListenerPermission(context)) }
     val nowPlaying by MediaListenerService.nowPlaying.collectAsState()
+    val np = nowPlaying
 
-    // Re-check permission on each recomposition (user may have just returned from Settings)
     LaunchedEffect(Unit) {
         hasPermission.value = PermissionHelper.hasNotificationListenerPermission(context)
     }
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp)
-    ) {
-        if (!hasPermission.value) {
-            Icon(
-                Icons.Rounded.MusicOff,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = "Music access not granted",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                modifier = Modifier.weight(1f)
-            )
-            TextButton(onClick = {
-                context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-            }) {
-                Text("Allow")
-            }
-            return
-        }
+    val audioManager = remember {
+        context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    }
 
-        val np = nowPlaying
-        if (np != null) {
-            val art = np.albumArt
-            if (art != null) {
-                Image(
-                    bitmap = art.asImageBitmap(),
+    Column {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+        ) {
+            if (!hasPermission.value) {
+                Icon(
+                    Icons.Rounded.MusicOff,
                     contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                    modifier = Modifier.size(20.dp)
                 )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "Music access not granted",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = {
+                    context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                }) {
+                    Text("Allow")
+                }
+                return
+            }
+
+            if (np != null) {
+                val art = np.albumArt
+                if (art != null) {
+                    Image(
+                        bitmap = art.asImageBitmap(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.secondaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.MusicNote,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = np.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (np.artist.isNotBlank()) {
+                        Text(
+                            text = np.artist,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             } else {
                 Box(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.secondaryContainer),
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         Icons.Rounded.MusicNote,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                         modifier = Modifier.size(20.dp)
                     )
                 }
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
+                Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = np.title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    text = "No music playing",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                    modifier = Modifier.weight(1f)
                 )
-                if (np.artist.isNotBlank()) {
-                    Text(
-                        text = np.artist,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
             }
-        } else {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerLow),
-                contentAlignment = Alignment.Center
+
+            IconButton(onClick = { MediaListenerService.skipToPrevious() }, enabled = np != null) {
+                Icon(Icons.Rounded.SkipPrevious, contentDescription = "Previous")
+            }
+            FilledTonalIconButton(
+                onClick = {
+                    if (np?.isPlaying == true) MediaListenerService.pause()
+                    else MediaListenerService.play()
+                },
+                enabled = np != null
             ) {
                 Icon(
-                    Icons.Rounded.MusicNote,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                    modifier = Modifier.size(20.dp)
+                    if (np?.isPlaying == true) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                    contentDescription = if (np?.isPlaying == true) "Pause" else "Play"
                 )
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = "No music playing",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                modifier = Modifier.weight(1f)
-            )
+            IconButton(onClick = { MediaListenerService.skipToNext() }, enabled = np != null) {
+                Icon(Icons.Rounded.SkipNext, contentDescription = "Next")
+            }
+            IconButton(onClick = {
+                audioManager.adjustStreamVolume(
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.ADJUST_LOWER,
+                    AudioManager.FLAG_SHOW_UI
+                )
+            }) {
+                Icon(Icons.Rounded.VolumeDown, contentDescription = "Volume down",
+                    modifier = Modifier.size(20.dp))
+            }
+            IconButton(onClick = {
+                audioManager.adjustStreamVolume(
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.ADJUST_RAISE,
+                    AudioManager.FLAG_SHOW_UI
+                )
+            }) {
+                Icon(Icons.Rounded.VolumeUp, contentDescription = "Volume up",
+                    modifier = Modifier.size(20.dp))
+            }
         }
 
-        IconButton(onClick = { MediaListenerService.skipToPrevious() }, enabled = np != null) {
-            Icon(Icons.Rounded.SkipPrevious, contentDescription = "Previous")
-        }
-        FilledTonalIconButton(
-            onClick = {
-                if (np?.isPlaying == true) MediaListenerService.pause()
-                else MediaListenerService.play()
-            },
-            enabled = np != null
-        ) {
-            Icon(
-                if (np?.isPlaying == true) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                contentDescription = if (np?.isPlaying == true) "Pause" else "Play"
-            )
-        }
-        IconButton(onClick = { MediaListenerService.skipToNext() }, enabled = np != null) {
-            Icon(Icons.Rounded.SkipNext, contentDescription = "Next")
+        if (hasPermission.value && np != null && np.durationMs > 0) {
+            var displayPosition by remember(np.title, np.durationMs) {
+                mutableStateOf(np.positionMs)
+            }
+            LaunchedEffect(np.title, np.isPlaying, np.positionMs) {
+                if (np.isPlaying) {
+                    val startWall = System.currentTimeMillis()
+                    val startPos = np.positionMs
+                    while (true) {
+                        delay(500L)
+                        displayPosition = (startPos + System.currentTimeMillis() - startWall)
+                            .coerceAtMost(np.durationMs)
+                    }
+                } else {
+                    displayPosition = np.positionMs
+                }
+            }
+            val fraction = (displayPosition.toFloat() / np.durationMs).coerceIn(0f, 1f)
+            Box(modifier = Modifier.fillMaxWidth().height(2.dp)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(fraction)
+                        .background(MaterialTheme.colorScheme.primary)
+                )
+            }
         }
     }
 }
@@ -306,7 +392,8 @@ private fun StatDivider() {
 }
 
 private fun formatPace(minPerKm: Double): String {
+    if (minPerKm <= 0 || minPerKm > 60) return "--:--"
     val mins = minPerKm.toInt()
-    val secs = ((minPerKm - mins) * 60).toInt()
+    val secs = ((minPerKm - mins) * 60).toInt().coerceIn(0, 59)
     return "%d:%02d".format(mins, secs)
 }

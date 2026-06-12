@@ -10,5 +10,6 @@ data class Route(
     val avgPace: Double,
     val avgSpeedKmh: Double,
     val elevationGainM: Double,
-    val calories: Double = 0.0
+    val calories: Double = 0.0,
+    val category: String = "Other"
 )

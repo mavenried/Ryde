@@ -1,16 +1,24 @@
 package me.mavenried.Ryde.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import me.mavenried.Ryde.util.FileLogger
 import me.mavenried.Ryde.util.UserPrefs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -19,6 +27,7 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
     val context = LocalContext.current
     val useLbs = remember { mutableStateOf(UserPrefs.useLbs(context)) }
     val weightKg = remember { mutableStateOf(UserPrefs.getWeightKg(context)) }
+    var showLogsDialog by remember { mutableStateOf(false) }
 
     val displayValue = remember(useLbs.value, weightKg.value) {
         if (useLbs.value) "%.1f".format(UserPrefs.kgToLbs(weightKg.value))
@@ -26,6 +35,10 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
     }
     var inputText by remember(displayValue) { mutableStateOf(displayValue) }
     var isError by remember { mutableStateOf(false) }
+
+    if (showLogsDialog) {
+        LogsDialog(onDismiss = { showLogsDialog = false })
+    }
 
     fun save() {
         val parsed = inputText.toDoubleOrNull()
@@ -95,6 +108,77 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
                 )
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text("Diagnostics", style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary)
+
+            OutlinedButton(
+                onClick = { showLogsDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(16.dp)
+            ) {
+                Icon(Icons.Rounded.Description, contentDescription = null)
+                Spacer(modifier = Modifier.width(12.dp))
+                Text("View Application Logs")
+            }
+        }
+    }
+}
+
+@Composable
+private fun LogsDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    var logText by remember { mutableStateOf("Loading...") }
+
+    LaunchedEffect(Unit) {
+        logText = FileLogger.getLogs(context)
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.surface
+        ) {
+            Scaffold(
+                topBar = {
+                    @OptIn(ExperimentalMaterial3Api::class)
+                    TopAppBar(
+                        title = { Text("Application Logs") },
+                        navigationIcon = {
+                            IconButton(onClick = onDismiss) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = {
+                                FileLogger.clearLogs(context)
+                                logText = "Logs cleared."
+                            }) {
+                                Icon(Icons.Rounded.Delete, contentDescription = "Clear logs")
+                            }
+                        }
+                    )
+                }
+            ) { padding ->
+                Column(
+                    modifier = Modifier
+                        .padding(padding)
+                        .padding(16.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = logText,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Monospace
+                        )
+                    )
+                }
             }
         }
     }

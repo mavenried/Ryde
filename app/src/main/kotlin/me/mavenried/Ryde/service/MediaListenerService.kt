@@ -7,6 +7,7 @@ import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
+import android.os.SystemClock
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,7 +18,9 @@ data class NowPlaying(
     val title: String,
     val artist: String,
     val isPlaying: Boolean,
-    val albumArt: Bitmap? = null
+    val albumArt: Bitmap? = null,
+    val positionMs: Long = 0L,
+    val durationMs: Long = 0L
 )
 
 class MediaListenerService : NotificationListenerService() {
@@ -62,12 +65,25 @@ class MediaListenerService : NotificationListenerService() {
     private fun refreshNowPlaying() {
         val ctrl = activeController ?: run { _nowPlaying.value = null; return }
         val meta = ctrl.metadata
+        val state = ctrl.playbackState
+        val durationMs = meta?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+        val isPlaying = state?.state == PlaybackState.STATE_PLAYING
+        // Extrapolate current position from the snapshot + elapsed time since last update.
+        val positionMs = if (state != null && isPlaying) {
+            val elapsed = SystemClock.elapsedRealtime() - state.lastPositionUpdateTime
+            (state.position + (elapsed * state.playbackSpeed).toLong())
+                .coerceIn(0L, if (durationMs > 0) durationMs else Long.MAX_VALUE)
+        } else {
+            state?.position ?: 0L
+        }
         _nowPlaying.value = NowPlaying(
             title = meta?.getString(MediaMetadata.METADATA_KEY_TITLE) ?: "Unknown",
             artist = meta?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: "",
-            isPlaying = ctrl.playbackState?.state == PlaybackState.STATE_PLAYING,
+            isPlaying = isPlaying,
             albumArt = meta?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-                ?: meta?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+                ?: meta?.getBitmap(MediaMetadata.METADATA_KEY_ART),
+            positionMs = positionMs,
+            durationMs = durationMs
         )
     }
 }

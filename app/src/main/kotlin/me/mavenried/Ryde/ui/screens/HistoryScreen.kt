@@ -6,6 +6,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.DirectionsBike
+import androidx.compose.material.icons.automirrored.rounded.DirectionsRun
+import androidx.compose.material.icons.automirrored.rounded.DirectionsWalk
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.DirectionsBike
 import androidx.compose.material.icons.rounded.DirectionsRun
@@ -242,7 +245,7 @@ private fun RouteCard(route: Route, onClick: () -> Unit, modifier: Modifier = Mo
 
 private val ActivityType.icon: ImageVector
     get() = when (this) {
-        ActivityType.RUNNING -> Icons.Rounded.DirectionsRun
-        ActivityType.CYCLING -> Icons.Rounded.DirectionsBike
-        ActivityType.WALKING -> Icons.Rounded.DirectionsWalk
+        ActivityType.RUNNING -> Icons.AutoMirrored.Rounded.DirectionsRun
+        ActivityType.CYCLING -> Icons.AutoMirrored.Rounded.DirectionsBike
+        ActivityType.WALKING -> Icons.AutoMirrored.Rounded.DirectionsWalk
     }

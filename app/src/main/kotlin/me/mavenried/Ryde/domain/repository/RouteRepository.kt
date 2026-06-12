@@ -46,7 +46,8 @@ class RouteRepository(private val db: AppDatabase) {
         avgPace = avgPace,
         avgSpeedKmh = avgSpeedKmh,
         elevationGainM = elevationGainM,
-        calories = calories
+        calories = calories,
+        category = category
     )
 
     private fun Route.toEntity() = RouteEntity(
@@ -59,7 +60,8 @@ class RouteRepository(private val db: AppDatabase) {
         avgPace = avgPace,
         avgSpeedKmh = avgSpeedKmh,
         elevationGainM = elevationGainM,
-        calories = calories
+        calories = calories,
+        category = category
     )
 
     private fun LocationPointEntity.toDomain() = LocationPoint(

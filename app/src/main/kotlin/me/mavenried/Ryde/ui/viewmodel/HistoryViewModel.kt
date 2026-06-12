@@ -16,7 +16,7 @@ data class TotalStats(
     val totalDistanceKm: Double,
     val totalCalories: Double,
     val totalDurationMs: Long,
-    val rideCount: Int
+    val rideCount: Int,
 )
 
 class HistoryViewModel(app: Application) : AndroidViewModel(app) {

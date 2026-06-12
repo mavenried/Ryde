@@ -53,6 +53,7 @@ class TrackingViewModel(app: Application) : AndroidViewModel(app) {
     fun pauseTracking() { trackingService?.pauseTracking() }
     fun resumeTracking() { trackingService?.resumeTracking() }
     fun stopTracking() { trackingService?.stopTracking() }
+    fun discardTracking() { trackingService?.discardTracking() }
 
     override fun onCleared() {
         try { getApplication<Application>().unbindService(connection) } catch (_: Exception) {}

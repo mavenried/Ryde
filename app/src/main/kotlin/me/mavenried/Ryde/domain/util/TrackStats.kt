@@ -8,7 +8,9 @@ object TrackStats {
 
     private const val EARTH_RADIUS_KM = 6371.0
     private const val ACCURACY_THRESHOLD_M = 25f
-    private const val ELEVATION_NOISE_GATE_M = 2.0
+    // GPS altitude jitter on consumer devices is typically ±5–15 m.
+    // A gate below ~8 m accumulates significant false gain on flat ground.
+    private const val ELEVATION_NOISE_GATE_M = 8.0
 
     // Distance-based energy cost (kcal/kg/km) — won't accumulate while stationary
     // Sources: Margaria 1963 (running), Givoni & Goldman 1971 (walking), Whitt & Wilson 1982 (cycling)
@@ -34,7 +36,7 @@ object TrackStats {
     }
 
     fun avgPaceMinPerKm(distanceKm: Double, durationMs: Long): Double {
-        if (distanceKm <= 0.0) return 0.0
+        if (distanceKm <= 0.0 || durationMs <= 0) return 0.0
         return (durationMs / 60_000.0) / distanceKm
     }
 
