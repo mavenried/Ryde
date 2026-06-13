@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import me.mavenried.Ryde.domain.model.ActivityType
 import me.mavenried.Ryde.domain.model.Route
+import me.mavenried.Ryde.ui.viewmodel.ActivityStats
 import me.mavenried.Ryde.ui.viewmodel.HistoryViewModel
 import java.text.SimpleDateFormat
 import java.util.*
@@ -132,43 +133,81 @@ fun HistoryScreen(
 
 @Composable
 private fun TotalStatsHeader(stats: me.mavenried.Ryde.ui.viewmodel.TotalStats) {
+    val order = listOf(ActivityType.CYCLING, ActivityType.RUNNING, ActivityType.WALKING)
+    Column(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        order.forEach { type ->
+            val s = stats.byActivity[type] ?: return@forEach
+            ActivityStatsCard(type = type, stats = s)
+        }
+    }
+}
+
+@Composable
+private fun ActivityStatsCard(type: ActivityType, stats: ActivityStats) {
+    val label = when (type) {
+        ActivityType.CYCLING -> "Cycling"
+        ActivityType.RUNNING -> "Running"
+        ActivityType.WALKING -> "Walking"
+    }
+    val countLabel = when (type) {
+        ActivityType.CYCLING -> if (stats.count == 1) "ride" else "rides"
+        ActivityType.RUNNING -> if (stats.count == 1) "run" else "runs"
+        ActivityType.WALKING -> if (stats.count == 1) "walk" else "walks"
+    }
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
         )
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(
-                "Overall Stats",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
-
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = type.icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "${stats.count} $countLabel",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                )
+            }
             Row(modifier = Modifier.fillMaxWidth()) {
                 StatItem(
-                    label = "TOTAL DIST",
-                    value = "%.2f km".format(stats.totalDistanceKm),
+                    label = "DISTANCE",
+                    value = "%.2f km".format(stats.distanceKm),
                     modifier = Modifier.weight(1f)
                 )
                 StatItem(
-                    label = "TOTAL CALS",
-                    value = "%.0f".format(stats.totalCalories),
-                    modifier = Modifier.weight(1f)
-                )
-                StatItem(
-                    label = "TOTAL TIME",
+                    label = "TIME",
                     value = run {
-                        val h = stats.totalDurationMs / 3_600_000
-                        val m = (stats.totalDurationMs % 3_600_000) / 60_000
-                        val s = (stats.totalDurationMs % 60_000) / 1000
+                        val h = stats.durationMs / 3_600_000
+                        val m = (stats.durationMs % 3_600_000) / 60_000
+                        val s = (stats.durationMs % 60_000) / 1000
                         if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
                     },
+                    modifier = Modifier.weight(1f)
+                )
+                StatItem(
+                    label = "CALORIES",
+                    value = "%.0f kcal".format(stats.calories),
                     modifier = Modifier.weight(1f)
                 )
             }

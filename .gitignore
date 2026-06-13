@@ -1,3 +1,5 @@
+# Bak'ed files
+*.bak
 # Gradle files
 .gradle/
 build/
