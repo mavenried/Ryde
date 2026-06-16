@@ -14,6 +14,9 @@ class RouteRepository(private val db: AppDatabase) {
     fun getAllRoutes(): Flow<List<Route>> =
         db.routeDao().getAllRoutes().map { entities -> entities.map { it.toDomain() } }
 
+    suspend fun getAllRoutesOnce(): List<Route> =
+        db.routeDao().getAllRoutesOnce().map { it.toDomain() }
+
     suspend fun getRouteById(id: String): Route? =
         db.routeDao().getRouteById(id)?.toDomain()
 
@@ -36,6 +39,8 @@ class RouteRepository(private val db: AppDatabase) {
         val entity = db.routeDao().getRouteById(id) ?: return
         db.routeDao().delete(entity)
     }
+
+    suspend fun renameRoute(id: String, name: String) = db.routeDao().updateName(id, name)
 
     suspend fun deleteAllRoutes() = db.routeDao().deleteAll()
 

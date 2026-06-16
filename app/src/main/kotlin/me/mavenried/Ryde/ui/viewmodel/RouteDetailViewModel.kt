@@ -41,6 +41,13 @@ class RouteDetailViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun renameRoute(id: String, newName: String) {
+        viewModelScope.launch {
+            repository.renameRoute(id, newName)
+            _route.value = _route.value?.copy(name = newName)
+        }
+    }
+
     fun deleteRoute(id: String, onDeleted: () -> Unit) {
         viewModelScope.launch {
             repository.deleteRoute(id)

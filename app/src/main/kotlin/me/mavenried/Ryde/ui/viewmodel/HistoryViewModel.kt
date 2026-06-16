@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.Calendar
 
 data class ActivityStats(
     val distanceKm: Double,
@@ -34,6 +35,9 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
     val routes: StateFlow<List<Route>> = repository.getAllRoutes()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    val streak: StateFlow<Int> = routes.map { list -> computeStreak(list) }
+        .stateIn(viewModelScope, SharingStarted.Lazily, 0)
+
     val totalStats: StateFlow<TotalStats> = routes.map { list ->
         val byActivity = list.groupBy { it.activityType }.mapValues { (_, routes) ->
             ActivityStats(
@@ -54,5 +58,20 @@ class HistoryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deleteAll() {
         viewModelScope.launch { repository.deleteAllRoutes() }
+    }
+
+    private fun computeStreak(routes: List<Route>): Int {
+        val msPerDay = 86_400_000L
+        val completedDays = routes.filter { it.completed }.mapTo(mutableSetOf()) { route ->
+            val cal = Calendar.getInstance().apply { timeInMillis = route.startTime }
+            cal.set(Calendar.HOUR_OF_DAY, 0); cal.set(Calendar.MINUTE, 0)
+            cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0)
+            cal.timeInMillis / msPerDay
+        }
+        val today = System.currentTimeMillis() / msPerDay
+        var streak = 0
+        var day = today
+        while (day in completedDays) { streak++; day-- }
+        return streak
     }
 }

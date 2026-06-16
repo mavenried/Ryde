@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,6 +26,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import me.mavenried.Ryde.domain.model.ActivityType
 import me.mavenried.Ryde.ui.components.ElevationChart
 import me.mavenried.Ryde.ui.components.RouteMapView
+import me.mavenried.Ryde.ui.components.SpeedChart
 import me.mavenried.Ryde.ui.theme.LocalIsMetric
 import me.mavenried.Ryde.ui.viewmodel.RouteDetailViewModel
 import me.mavenried.Ryde.util.GpxExporter
@@ -44,6 +46,8 @@ fun RouteDetailScreen(
     val stoppedTimeSec by vm.stoppedTimeSec.collectAsState()
     val isMetric = LocalIsMetric.current
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var renameText by remember { mutableStateOf("") }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/gpx+xml")
@@ -60,6 +64,32 @@ fun RouteDetailScreen(
     }
 
     LaunchedEffect(routeId) { vm.load(routeId) }
+
+    if (showRenameDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("Rename ride") },
+            text = {
+                OutlinedTextField(
+                    value = renameText,
+                    onValueChange = { renameText = it },
+                    singleLine = true,
+                    label = { Text("Name") }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (renameText.isNotBlank()) {
+                        vm.renameRoute(routeId, renameText.trim())
+                    }
+                    showRenameDialog = false
+                }) { Text("Rename") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
 
     if (showDeleteDialog) {
         AlertDialog(
@@ -81,7 +111,15 @@ fun RouteDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(route?.name ?: "Route") },
+                title = {
+                    Text(
+                        route?.name ?: "Route",
+                        modifier = Modifier.clickable {
+                            renameText = route?.name ?: ""
+                            showRenameDialog = true
+                        }
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -138,7 +176,19 @@ fun RouteDetailScreen(
                         points = points,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp)
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                    Text(
+                        "Speed",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(start = 16.dp, top = 4.dp),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    SpeedChart(
+                        points = points,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
                     )
                 }
 

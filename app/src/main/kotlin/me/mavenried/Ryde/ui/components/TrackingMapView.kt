@@ -16,6 +16,7 @@ import com.google.maps.android.compose.*
 import kotlinx.coroutines.launch
 import me.mavenried.Ryde.domain.model.ActivityType
 import me.mavenried.Ryde.domain.model.LocationPoint
+import me.mavenried.Ryde.ui.viewmodel.DestinationPoint
 
 private fun speedColor(speedMs: Float, activityType: ActivityType): Color {
     val (slowMs, fastMs) = when (activityType) {
@@ -44,6 +45,7 @@ fun TrackingMapView(
     modifier: Modifier = Modifier,
     recenterTrigger: Int = 0,
     overlayRoutes: List<List<LocationPoint>> = emptyList(),
+    destination: DestinationPoint? = null,
     onMapClick: ((Double, Double) -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -146,6 +148,27 @@ fun TrackingMapView(
                     width = 8f
                 )
             }
+        }
+
+        // Destination bearing line + marker
+        destination?.let { dest ->
+            val destLatLng = LatLng(dest.lat, dest.lng)
+            if (points.isNotEmpty()) {
+                val last = points.last()
+                Polyline(
+                    points = listOf(LatLng(last.lat, last.lng), destLatLng),
+                    color = Color(0xCCFF6B35.toInt()),
+                    width = 6f,
+                    pattern = listOf(
+                        com.google.android.gms.maps.model.Dash(20f),
+                        com.google.android.gms.maps.model.Gap(12f)
+                    )
+                )
+            }
+            Marker(
+                state = MarkerState(position = destLatLng),
+                title = dest.label.ifBlank { "Destination" }
+            )
         }
 
         // Active route polyline

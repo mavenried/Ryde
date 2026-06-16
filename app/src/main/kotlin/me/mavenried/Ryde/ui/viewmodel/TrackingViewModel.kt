@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+data class DestinationPoint(val lat: Double, val lng: Double, val label: String = "")
+
 class TrackingViewModel(app: Application) : AndroidViewModel(app) {
 
     private var trackingService: TrackingService? = null
@@ -35,6 +37,9 @@ class TrackingViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _overlayPoints = MutableStateFlow<List<List<LocationPoint>>>(emptyList())
     val overlayPoints: StateFlow<List<List<LocationPoint>>> = _overlayPoints.asStateFlow()
+
+    private val _destination = MutableStateFlow<DestinationPoint?>(null)
+    val destination: StateFlow<DestinationPoint?> = _destination.asStateFlow()
 
     val allRoutes: StateFlow<List<Route>> = repository.getAllRoutes()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
@@ -120,6 +125,12 @@ class TrackingViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun clearOverlay() { _overlayPoints.value = emptyList() }
+
+    fun setDestination(lat: Double, lng: Double, label: String = "") {
+        _destination.value = DestinationPoint(lat, lng, label)
+    }
+
+    fun clearDestination() { _destination.value = null }
 
     override fun onCleared() {
         try { getApplication<Application>().unbindService(connection) } catch (_: Exception) {}

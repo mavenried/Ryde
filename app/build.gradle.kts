@@ -72,5 +72,8 @@ dependencies {
     implementation(libs.maps.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidsvg)
+    implementation(libs.androidx.glance)
+    implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.glance.material3)
     debugImplementation(libs.androidx.ui.tooling)
 }

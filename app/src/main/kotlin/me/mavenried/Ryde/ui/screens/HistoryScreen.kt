@@ -13,6 +13,9 @@ import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.DirectionsBike
 import androidx.compose.material.icons.rounded.DirectionsRun
 import androidx.compose.material.icons.rounded.DirectionsWalk
+import androidx.compose.material.icons.rounded.EmojiEvents
+import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.QueryStats
 import androidx.compose.material.icons.rounded.SentimentDissatisfied
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -41,10 +44,13 @@ import java.util.*
 fun HistoryScreen(
     onNavigateBack: () -> Unit,
     onRouteClick: (String) -> Unit,
+    onNavigateToPersonalRecords: () -> Unit = {},
+    onNavigateToStats: () -> Unit = {},
     vm: HistoryViewModel = viewModel()
 ) {
     val routes by vm.routes.collectAsState()
     val stats by vm.totalStats.collectAsState()
+    val streak by vm.streak.collectAsState()
     var showClearDialog by remember { mutableStateOf(false) }
 
     if (showClearDialog) {
@@ -119,6 +125,13 @@ fun HistoryScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 item {
+                    HistoryQuickActions(
+                        streak = streak,
+                        onPersonalRecords = onNavigateToPersonalRecords,
+                        onStats = onNavigateToStats
+                    )
+                }
+                item {
                     TotalStatsHeader(stats = stats)
                 }
                 items(routes, key = { it.id }) { route ->
@@ -129,6 +142,73 @@ fun HistoryScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun HistoryQuickActions(
+    streak: Int,
+    onPersonalRecords: () -> Unit,
+    onStats: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        if (streak > 0) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                ),
+                modifier = Modifier.weight(1f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.LocalFireDepartment,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Column {
+                        Text(
+                            "$streak day${if (streak == 1) "" else "s"}",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            "streak",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+            }
+        }
+        OutlinedButton(
+            onClick = onPersonalRecords,
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            Icon(Icons.Rounded.EmojiEvents, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Records", style = MaterialTheme.typography.labelLarge)
+        }
+        OutlinedButton(
+            onClick = onStats,
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            Icon(Icons.Rounded.QueryStats, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Stats", style = MaterialTheme.typography.labelLarge)
         }
     }
 }

@@ -12,10 +12,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.MyLocation
+import androidx.compose.material.icons.rounded.Navigation
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,15 +30,21 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import android.location.Geocoder
 import me.mavenried.Ryde.domain.model.ActivityType
 import me.mavenried.Ryde.service.TrackingState
 import me.mavenried.Ryde.ui.components.*
+import me.mavenried.Ryde.ui.viewmodel.DestinationPoint
 import me.mavenried.Ryde.ui.viewmodel.TrackingViewModel
 import me.mavenried.Ryde.util.PermissionHelper
 import me.mavenried.Ryde.util.UserPrefs
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.*
 
 @Composable
 fun HomeScreen(
@@ -47,6 +56,7 @@ fun HomeScreen(
     val crashRoute by vm.crashRecoveryRoute.collectAsState()
     val overlayPoints by vm.overlayPoints.collectAsState()
     val allRoutes by vm.allRoutes.collectAsState()
+    val destination by vm.destination.collectAsState()
 
     var selectedActivity by remember { mutableStateOf(ActivityType.CYCLING) }
     var showStopDialog by remember { mutableStateOf(false) }
@@ -177,7 +187,10 @@ fun HomeScreen(
             onStop = { showStopDialog = true },
             overlayPoints = overlayPoints,
             onShowOverlaySelector = { showOverlaySelector = true },
-            hasOverlay = overlayPoints.isNotEmpty()
+            hasOverlay = overlayPoints.isNotEmpty(),
+            destination = destination,
+            onSetDestination = { lat, lng, label -> vm.setDestination(lat, lng, label) },
+            onClearDestination = { vm.clearDestination() }
         )
     }
 
@@ -437,11 +450,68 @@ private fun ActiveContent(
     onStop: () -> Unit,
     overlayPoints: List<List<me.mavenried.Ryde.domain.model.LocationPoint>>,
     onShowOverlaySelector: () -> Unit,
-    hasOverlay: Boolean
+    hasOverlay: Boolean,
+    destination: DestinationPoint? = null,
+    onSetDestination: (Double, Double, String) -> Unit = { _, _, _ -> },
+    onClearDestination: () -> Unit = {}
 ) {
     var recenterTrigger by remember { mutableStateOf(0) }
     var panelHeightPx by remember { mutableStateOf(0) }
     val density = LocalDensity.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var showDestSearch by remember { mutableStateOf(false) }
+    var destSearchText by remember { mutableStateOf("") }
+    var destSearchError by remember { mutableStateOf(false) }
+    var destSearchBusy by remember { mutableStateOf(false) }
+
+    if (showDestSearch) {
+        AlertDialog(
+            onDismissRequest = { showDestSearch = false; destSearchText = "" },
+            title = { Text("Set destination") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    OutlinedTextField(
+                        value = destSearchText,
+                        onValueChange = { destSearchText = it; destSearchError = false },
+                        label = { Text("Address or place") },
+                        singleLine = true,
+                        isError = destSearchError,
+                        supportingText = if (destSearchError) { { Text("Place not found") } } else null
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = destSearchText.isNotBlank() && !destSearchBusy,
+                    onClick = {
+                        scope.launch {
+                            destSearchBusy = true
+                            val result = withContext(Dispatchers.IO) {
+                                try {
+                                    @Suppress("DEPRECATION")
+                                    Geocoder(context, Locale.getDefault())
+                                        .getFromLocationName(destSearchText.trim(), 1)
+                                        ?.firstOrNull()
+                                } catch (_: Exception) { null }
+                            }
+                            destSearchBusy = false
+                            if (result != null) {
+                                onSetDestination(result.latitude, result.longitude, destSearchText.trim())
+                                showDestSearch = false
+                                destSearchText = ""
+                            } else {
+                                destSearchError = true
+                            }
+                        }
+                    }
+                ) { Text(if (destSearchBusy) "Searching..." else "Go") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDestSearch = false; destSearchText = "" }) { Text("Cancel") }
+            }
+        )
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         TrackingMapView(
@@ -449,7 +519,8 @@ private fun ActiveContent(
             activityType = state.activityType,
             modifier = Modifier.fillMaxSize(),
             recenterTrigger = recenterTrigger,
-            overlayRoutes = overlayPoints
+            overlayRoutes = overlayPoints,
+            destination = destination
         )
         Box(
             modifier = Modifier
@@ -500,6 +571,85 @@ private fun ActiveContent(
         ) {
             Icon(Icons.Rounded.MyLocation, contentDescription = "Recenter")
         }
+
+        // Destination search button
+        SmallFloatingActionButton(
+            onClick = { showDestSearch = true },
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(bottom = panelHeightDp + 16.dp, start = 16.dp),
+            containerColor = if (destination != null)
+                MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = if (destination != null)
+                MaterialTheme.colorScheme.onPrimaryContainer
+            else MaterialTheme.colorScheme.onSurface
+        ) {
+            Icon(Icons.Rounded.Search, contentDescription = "Set destination")
+        }
+
+        // Destination bearing chip
+        destination?.let { dest ->
+            val lastPt = state.points.lastOrNull()
+            if (lastPt != null) {
+                val dLat = Math.toRadians(dest.lat - lastPt.lat)
+                val dLng = Math.toRadians(dest.lng - lastPt.lng)
+                val lat1 = Math.toRadians(lastPt.lat)
+                val lat2 = Math.toRadians(dest.lat)
+                val a = sin(dLat / 2).pow(2) + cos(lat1) * cos(lat2) * sin(dLng / 2).pow(2)
+                val distKm = 6371.0 * 2 * atan2(sqrt(a), sqrt(1 - a))
+                val y = sin(dLng) * cos(lat2)
+                val x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLng)
+                val bearingDeg = (Math.toDegrees(atan2(y, x)).toFloat() + 360f) % 360f
+
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = 8.dp),
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shadowElevation = 4.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.Navigation,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            "%.1f km  •  %.0f°".format(distKm, bearingDeg),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        if (dest.label.isNotBlank()) {
+                            Text(
+                                "→ ${dest.label}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            )
+                        }
+                        IconButton(
+                            onClick = onClearDestination,
+                            modifier = Modifier.size(20.dp)
+                        ) {
+                            Icon(
+                                Icons.Rounded.Close,
+                                contentDescription = "Clear destination",
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         ActiveBottomPanel(
             state = state,
             onPauseResume = onPauseResume,
