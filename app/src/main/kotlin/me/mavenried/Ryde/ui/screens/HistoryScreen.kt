@@ -29,8 +29,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import me.mavenried.Ryde.domain.model.ActivityType
 import me.mavenried.Ryde.domain.model.Route
+import me.mavenried.Ryde.ui.theme.LocalIsMetric
 import me.mavenried.Ryde.ui.viewmodel.ActivityStats
 import me.mavenried.Ryde.ui.viewmodel.HistoryViewModel
+import me.mavenried.Ryde.util.UserPrefs
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -147,6 +149,7 @@ private fun TotalStatsHeader(stats: me.mavenried.Ryde.ui.viewmodel.TotalStats) {
 
 @Composable
 private fun ActivityStatsCard(type: ActivityType, stats: ActivityStats) {
+    val isMetric = LocalIsMetric.current
     val label = when (type) {
         ActivityType.CYCLING -> "Cycling"
         ActivityType.RUNNING -> "Running"
@@ -192,7 +195,7 @@ private fun ActivityStatsCard(type: ActivityType, stats: ActivityStats) {
             Row(modifier = Modifier.fillMaxWidth()) {
                 StatItem(
                     label = "DISTANCE",
-                    value = "%.2f km".format(stats.distanceKm),
+                    value = UserPrefs.formatDistance(stats.distanceKm, isMetric),
                     modifier = Modifier.weight(1f)
                 )
                 StatItem(
@@ -233,6 +236,7 @@ private fun StatItem(label: String, value: String, modifier: Modifier = Modifier
 
 @Composable
 private fun RouteCard(route: Route, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val isMetric = LocalIsMetric.current
     val dateStr = SimpleDateFormat("EEE, dd MMM · HH:mm", Locale.getDefault())
         .format(Date(route.startTime))
     val durationMin = (route.endTime - route.startTime) / 60_000
@@ -276,7 +280,7 @@ private fun RouteCard(route: Route, onClick: () -> Unit, modifier: Modifier = Mo
             Spacer(modifier = Modifier.width(16.dp))
 
             Column(horizontalAlignment = Alignment.End) {
-                Text("%.2f km".format(route.distanceKm), style = MaterialTheme.typography.titleSmall)
+                Text(UserPrefs.formatDistance(route.distanceKm, isMetric), style = MaterialTheme.typography.titleSmall)
                 Text(
                     "%d min".format(durationMin),
                     style = MaterialTheme.typography.bodySmall,

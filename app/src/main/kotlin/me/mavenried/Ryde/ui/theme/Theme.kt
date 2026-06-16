@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
 val LocalIsDarkTheme = compositionLocalOf { false }
+val LocalIsMetric = compositionLocalOf { true }
 
 private val FallbackDark = darkColorScheme(
     primary = RydeBlue,
@@ -31,6 +32,7 @@ private val FallbackLight = lightColorScheme(
 @Composable
 fun RydeTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    isMetric: Boolean = true,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
@@ -49,7 +51,10 @@ fun RydeTheme(
         }
     }
 
-    CompositionLocalProvider(LocalIsDarkTheme provides darkTheme) {
+    CompositionLocalProvider(
+        LocalIsDarkTheme provides darkTheme,
+        LocalIsMetric provides isMetric
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,

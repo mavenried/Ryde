@@ -42,7 +42,9 @@ fun TrackingMapView(
     points: List<LocationPoint>,
     activityType: ActivityType,
     modifier: Modifier = Modifier,
-    recenterTrigger: Int = 0
+    recenterTrigger: Int = 0,
+    overlayRoutes: List<List<LocationPoint>> = emptyList(),
+    onMapClick: ((Double, Double) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -78,23 +80,30 @@ fun TrackingMapView(
         }
     }
 
-    // Follow the latest tracking point
+    // Follow the latest tracking point with heading
     LaunchedEffect(points) {
         if (points.isNotEmpty()) {
-            cameraPositionState.animate(
-                CameraUpdateFactory.newLatLng(LatLng(points.last().lat, points.last().lng))
-            )
+            val last = points.last()
+            val camPos = CameraPosition.Builder()
+                .target(LatLng(last.lat, last.lng))
+                .zoom(17f)
+                .apply { if (last.bearing != 0f) bearing(last.bearing) }
+                .build()
+            cameraPositionState.animate(CameraUpdateFactory.newCameraPosition(camPos))
         }
     }
 
-    // Recenter on demand
+    // Recenter on demand, restoring heading
     LaunchedEffect(recenterTrigger) {
         if (recenterTrigger == 0) return@LaunchedEffect
         val target = points.lastOrNull()
         if (target != null) {
-            cameraPositionState.animate(
-                CameraUpdateFactory.newLatLng(LatLng(target.lat, target.lng))
-            )
+            val camPos = CameraPosition.Builder()
+                .target(LatLng(target.lat, target.lng))
+                .zoom(17f)
+                .apply { if (target.bearing != 0f) bearing(target.bearing) }
+                .build()
+            cameraPositionState.animate(CameraUpdateFactory.newCameraPosition(camPos))
         } else if (hasLocation) {
             try {
                 LocationServices.getFusedLocationProviderClient(context)
@@ -115,6 +124,7 @@ fun TrackingMapView(
     GoogleMap(
         modifier = modifier,
         cameraPositionState = cameraPositionState,
+        onMapClick = { latLng -> onMapClick?.invoke(latLng.latitude, latLng.longitude) },
         mapColorScheme = if (LocalIsDarkTheme.current) ComposeMapColorScheme.DARK else ComposeMapColorScheme.LIGHT,
         properties = MapProperties(
             isMyLocationEnabled = hasLocation
@@ -126,6 +136,19 @@ fun TrackingMapView(
             mapToolbarEnabled = false
         )
     ) {
+        // Previous route overlays (semi-transparent gray)
+        overlayRoutes.forEach { overlayPts ->
+            for (i in 0 until overlayPts.size - 1) {
+                val p1 = overlayPts[i]; val p2 = overlayPts[i + 1]
+                Polyline(
+                    points = listOf(LatLng(p1.lat, p1.lng), LatLng(p2.lat, p2.lng)),
+                    color = Color(0x88888888.toInt()),
+                    width = 8f
+                )
+            }
+        }
+
+        // Active route polyline
         for (i in 0 until points.size - 1) {
             val p1 = points[i]
             val p2 = points[i + 1]

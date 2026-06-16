@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.VolumeDown
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,7 +28,9 @@ import kotlinx.coroutines.delay
 import me.mavenried.Ryde.domain.model.ActivityType
 import me.mavenried.Ryde.service.MediaListenerService
 import me.mavenried.Ryde.service.TrackingState
+import me.mavenried.Ryde.ui.theme.LocalIsMetric
 import me.mavenried.Ryde.util.PermissionHelper
+import me.mavenried.Ryde.util.UserPrefs
 
 @Composable
 fun ActiveBottomPanel(
@@ -59,11 +63,12 @@ fun ActiveBottomPanel(
             val seconds = (state.elapsedMs % 60_000) / 1000
             val timeStr = if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
                           else "%02d:%02d".format(minutes, seconds)
+            val isMetric = LocalIsMetric.current
             val movementValue = if (state.activityType == ActivityType.CYCLING)
-                "%.1f km/h".format(state.currentSpeed)
+                UserPrefs.formatSpeed(state.currentSpeed, isMetric)
             else {
                 val pace = state.currentPace
-                if (pace > 0) formatPace(pace) else "--:--"
+                if (pace > 0) UserPrefs.formatPace(pace, isMetric) else "--:--"
             }
             val movementLabel = if (state.activityType == ActivityType.CYCLING) "SPEED" else "PACE"
 
@@ -77,7 +82,7 @@ fun ActiveBottomPanel(
                 ) {
                     StatCell(label = "TIME", value = timeStr, modifier = Modifier.weight(1f))
                     StatDivider()
-                    StatCell(label = "DIST", value = "%.2f km".format(state.distanceKm), modifier = Modifier.weight(1f))
+                    StatCell(label = "DIST", value = UserPrefs.formatDistance(state.distanceKm, isMetric), modifier = Modifier.weight(1f))
                 }
                 HorizontalDivider(
                     modifier = Modifier.padding(horizontal = 16.dp),
@@ -318,7 +323,7 @@ internal fun MusicRow() {
                     audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
                 volumeResetKey++
             }) {
-                Icon(Icons.Rounded.VolumeDown, contentDescription = "Volume down",
+                Icon(Icons.AutoMirrored.Rounded.VolumeDown, contentDescription = "Volume down",
                     modifier = Modifier.size(20.dp))
             }
             IconButton(onClick = {
@@ -327,7 +332,7 @@ internal fun MusicRow() {
                     audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
                 volumeResetKey++
             }) {
-                Icon(Icons.Rounded.VolumeUp, contentDescription = "Volume up",
+                Icon(Icons.AutoMirrored.Rounded.VolumeUp, contentDescription = "Volume up",
                     modifier = Modifier.size(20.dp))
             }
         }
@@ -400,9 +405,3 @@ private fun StatDivider() {
     )
 }
 
-private fun formatPace(minPerKm: Double): String {
-    if (minPerKm <= 0 || minPerKm > 60) return "--:--"
-    val mins = minPerKm.toInt()
-    val secs = ((minPerKm - mins) * 60).toInt().coerceIn(0, 59)
-    return "%d:%02d".format(mins, secs)
-}

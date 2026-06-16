@@ -25,5 +25,6 @@ data class LocationPointEntity(
     val altitude: Double,
     val timestamp: Long,
     val speed: Float,
-    val accuracy: Float
+    val accuracy: Float,
+    val bearing: Float = 0f
 )

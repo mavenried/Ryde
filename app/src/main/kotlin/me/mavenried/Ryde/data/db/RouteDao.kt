@@ -15,6 +15,9 @@ interface RouteDao {
     @Query("SELECT * FROM routes WHERE id = :id")
     suspend fun getRouteById(id: String): RouteEntity?
 
+    @Query("SELECT * FROM routes WHERE completed = 0 ORDER BY startTime DESC LIMIT 1")
+    suspend fun getLastIncompleteRoute(): RouteEntity?
+
     @Delete
     suspend fun delete(route: RouteEntity)
 

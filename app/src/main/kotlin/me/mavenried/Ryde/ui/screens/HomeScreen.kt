@@ -6,11 +6,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Layers
 import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
@@ -30,6 +33,9 @@ import me.mavenried.Ryde.ui.components.*
 import me.mavenried.Ryde.ui.viewmodel.TrackingViewModel
 import me.mavenried.Ryde.util.PermissionHelper
 import me.mavenried.Ryde.util.UserPrefs
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun HomeScreen(
@@ -38,9 +44,14 @@ fun HomeScreen(
     vm: TrackingViewModel = viewModel()
 ) {
     val state by vm.trackingState.collectAsState()
+    val crashRoute by vm.crashRecoveryRoute.collectAsState()
+    val overlayPoints by vm.overlayPoints.collectAsState()
+    val allRoutes by vm.allRoutes.collectAsState()
+
     var selectedActivity by remember { mutableStateOf(ActivityType.CYCLING) }
     var showStopDialog by remember { mutableStateOf(false) }
     var showOnboarding by remember { mutableStateOf(false) }
+    var showOverlaySelector by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     LaunchedEffect(Unit) {
@@ -49,6 +60,70 @@ fun HomeScreen(
 
     if (showOnboarding) {
         OnboardingDialog(onDone = { showOnboarding = false })
+    }
+
+    // Crash recovery dialog
+    crashRoute?.let { cr ->
+        val activityLabel = when (cr.activityType) {
+            ActivityType.CYCLING -> "ride"
+            ActivityType.RUNNING -> "run"
+            ActivityType.WALKING -> "walk"
+        }
+        val timeStr = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(cr.startTime))
+        AlertDialog(
+            onDismissRequest = { vm.discardCrashedRoute() },
+            title = { Text("Resume $activityLabel?") },
+            text = { Text("A $activityLabel from $timeStr wasn't saved properly. Resume it or discard it.") },
+            confirmButton = {
+                TextButton(onClick = { vm.resumeCrashedTracking() }) { Text("Resume") }
+            },
+            dismissButton = {
+                TextButton(onClick = { vm.discardCrashedRoute() }) { Text("Discard") }
+            }
+        )
+    }
+
+    // Overlay selector dialog
+    if (showOverlaySelector) {
+        AlertDialog(
+            onDismissRequest = { showOverlaySelector = false },
+            title = { Text("Select overlay route") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    if (allRoutes.isEmpty()) {
+                        Text(
+                            "No saved routes.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    } else {
+                        allRoutes.take(15).forEach { route ->
+                            TextButton(
+                                onClick = { vm.setOverlayRoute(route.id); showOverlaySelector = false },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(route.name, modifier = Modifier.fillMaxWidth())
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                if (overlayPoints.isNotEmpty()) {
+                    TextButton(onClick = { vm.clearOverlay(); showOverlaySelector = false }) {
+                        Text("Clear overlay")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showOverlaySelector = false }) { Text("Cancel") }
+            }
+        )
     }
 
     val bgLocationLauncher = rememberLauncherForActivityResult(
@@ -91,12 +166,18 @@ fun HomeScreen(
             onSelect = { selectedActivity = it },
             onStart = ::onStartPressed,
             onHistory = onNavigateToHistory,
-            onSettings = onNavigateToSettings
+            onSettings = onNavigateToSettings,
+            overlayPoints = overlayPoints,
+            onShowOverlaySelector = { showOverlaySelector = true },
+            hasOverlay = overlayPoints.isNotEmpty()
         )
         is TrackingState.Active -> ActiveContent(
             state = s,
             onPauseResume = { if (s.isPaused) vm.resumeTracking() else vm.pauseTracking() },
-            onStop = { showStopDialog = true }
+            onStop = { showStopDialog = true },
+            overlayPoints = overlayPoints,
+            onShowOverlaySelector = { showOverlaySelector = true },
+            hasOverlay = overlayPoints.isNotEmpty()
         )
     }
 
@@ -226,15 +307,20 @@ private fun IdleContent(
     onSelect: (ActivityType) -> Unit,
     onStart: () -> Unit,
     onHistory: () -> Unit,
-    onSettings: () -> Unit
+    onSettings: () -> Unit,
+    overlayPoints: List<List<me.mavenried.Ryde.domain.model.LocationPoint>>,
+    onShowOverlaySelector: () -> Unit,
+    hasOverlay: Boolean
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         TrackingMapView(
             points = emptyList(),
             activityType = selected,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            overlayRoutes = overlayPoints
         )
 
+        // Top-right: settings
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -250,6 +336,28 @@ private fun IdleContent(
                     Icons.Rounded.Settings,
                     contentDescription = "Settings",
                     tint = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+
+        // Top-left: overlay button
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(12.dp)
+                .background(
+                    if (hasOverlay) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.90f)
+                    else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.80f),
+                    RoundedCornerShape(12.dp)
+                )
+        ) {
+            IconButton(onClick = onShowOverlaySelector) {
+                Icon(
+                    Icons.Rounded.Layers,
+                    contentDescription = "Overlay route",
+                    tint = if (hasOverlay) MaterialTheme.colorScheme.onPrimaryContainer
+                           else MaterialTheme.colorScheme.onSurface
                 )
             }
         }
@@ -326,7 +434,10 @@ private fun IdleContent(
 private fun ActiveContent(
     state: TrackingState.Active,
     onPauseResume: () -> Unit,
-    onStop: () -> Unit
+    onStop: () -> Unit,
+    overlayPoints: List<List<me.mavenried.Ryde.domain.model.LocationPoint>>,
+    onShowOverlaySelector: () -> Unit,
+    hasOverlay: Boolean
 ) {
     var recenterTrigger by remember { mutableStateOf(0) }
     var panelHeightPx by remember { mutableStateOf(0) }
@@ -337,7 +448,8 @@ private fun ActiveContent(
             points = state.points,
             activityType = state.activityType,
             modifier = Modifier.fillMaxSize(),
-            recenterTrigger = recenterTrigger
+            recenterTrigger = recenterTrigger,
+            overlayRoutes = overlayPoints
         )
         Box(
             modifier = Modifier
@@ -356,6 +468,28 @@ private fun ActiveContent(
             )
         }
         val panelHeightDp = with(density) { panelHeightPx.toDp() }
+
+        // Overlay toggle button
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = panelHeightDp + 72.dp, end = 16.dp)
+                .background(
+                    if (hasOverlay) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.90f)
+                    else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    RoundedCornerShape(12.dp)
+                )
+        ) {
+            IconButton(onClick = onShowOverlaySelector) {
+                Icon(
+                    Icons.Rounded.Layers,
+                    contentDescription = "Overlay",
+                    tint = if (hasOverlay) MaterialTheme.colorScheme.onPrimaryContainer
+                           else MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+
         SmallFloatingActionButton(
             onClick = { recenterTrigger++ },
             modifier = Modifier

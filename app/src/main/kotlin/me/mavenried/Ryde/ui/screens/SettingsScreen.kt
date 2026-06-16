@@ -28,6 +28,7 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
     val useLbs = remember { mutableStateOf(UserPrefs.useLbs(context)) }
     val weightKg = remember { mutableStateOf(UserPrefs.getWeightKg(context)) }
     var theme by remember { mutableStateOf(UserPrefs.getTheme(context)) }
+    var isMetric by remember { mutableStateOf(UserPrefs.isMetric(context)) }
     var showLogsDialog by remember { mutableStateOf(false) }
 
     val displayValue = remember(useLbs.value, weightKg.value) {
@@ -69,7 +70,8 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
         Column(
             modifier = Modifier
                 .padding(padding)
-                .padding(horizontal = 24.dp, vertical = 16.dp),
+                .padding(horizontal = 24.dp, vertical = 16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             Text("Profile", style = MaterialTheme.typography.titleSmall,
@@ -106,6 +108,34 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
                 }
                 Text(
                     "Used to estimate calorie burn during activities.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                )
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text("Units", style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary)
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Distance & speed", style = MaterialTheme.typography.bodyMedium)
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    listOf(true to "Metric", false to "Imperial")
+                        .forEachIndexed { index, (value, label) ->
+                            SegmentedButton(
+                                selected = isMetric == value,
+                                onClick = {
+                                    isMetric = value
+                                    UserPrefs.setMetric(context, value)
+                                },
+                                shape = SegmentedButtonDefaults.itemShape(index, 2),
+                                label = { Text(label) }
+                            )
+                        }
+                }
+                Text(
+                    if (isMetric) "Showing km and kmph." else "Showing miles and mph.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
                 )

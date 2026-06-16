@@ -15,5 +15,6 @@ data class RouteEntity(
     val avgSpeedKmh: Double,
     val elevationGainM: Double,
     val calories: Double = 0.0,
-    val category: String = "Other"
+    val category: String = "Other",
+    val completed: Boolean = true
 )

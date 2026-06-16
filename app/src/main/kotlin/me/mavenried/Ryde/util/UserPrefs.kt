@@ -11,12 +11,20 @@ object UserPrefs {
     private const val KEY_USE_LBS = "use_lbs"
     private const val KEY_ONBOARDED = "onboarded"
     private const val KEY_THEME = "theme"
+    private const val KEY_USE_METRIC = "use_metric"
 
     private val _themeFlow = MutableStateFlow("system")
     val themeFlow: StateFlow<String> = _themeFlow.asStateFlow()
 
+    private val _metricsFlow = MutableStateFlow(true)
+    val metricsFlow: StateFlow<Boolean> = _metricsFlow.asStateFlow()
+
     fun initTheme(context: Context) {
         _themeFlow.value = getTheme(context)
+    }
+
+    fun initMetric(context: Context) {
+        _metricsFlow.value = isMetric(context)
     }
 
     fun getTheme(context: Context): String =
@@ -27,6 +35,16 @@ object UserPrefs {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().putString(KEY_THEME, theme).apply()
         _themeFlow.value = theme
+    }
+
+    fun isMetric(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_USE_METRIC, true)
+
+    fun setMetric(context: Context, metric: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_USE_METRIC, metric).apply()
+        _metricsFlow.value = metric
     }
 
     fun getWeightKg(context: Context): Double =
@@ -55,4 +73,27 @@ object UserPrefs {
 
     fun kgToLbs(kg: Double) = kg * 2.20462
     fun lbsToKg(lbs: Double) = lbs / 2.20462
+
+    // Unit conversion helpers
+    fun kmToMi(km: Double) = km * 0.621371
+    fun kmhToMph(kmh: Double) = kmh * 0.621371
+    fun minPerKmToMinPerMi(minPerKm: Double) = minPerKm * 1.60934
+
+    fun formatDistance(km: Double, isMetric: Boolean): String =
+        if (isMetric) "%.2f km".format(km) else "%.2f mi".format(kmToMi(km))
+
+    fun formatSpeed(kmh: Double, isMetric: Boolean): String =
+        if (isMetric) "%.1f kmph".format(kmh) else "%.1f mph".format(kmhToMph(kmh))
+
+    fun formatPace(minPerKm: Double, isMetric: Boolean): String {
+        if (minPerKm <= 0 || minPerKm > 60) return "--:--"
+        val pace = if (isMetric) minPerKm else minPerKmToMinPerMi(minPerKm)
+        val unit = if (isMetric) "/km" else "/mi"
+        val m = pace.toInt()
+        val s = ((pace - m) * 60).toInt().coerceIn(0, 59)
+        return "%d:%02d %s".format(m, s, unit)
+    }
+
+    fun speedUnitLabel(isMetric: Boolean) = if (isMetric) "kmph" else "mph"
+    fun distanceUnitLabel(isMetric: Boolean) = if (isMetric) "km" else "mi"
 }

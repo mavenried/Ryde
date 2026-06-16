@@ -17,6 +17,9 @@ class RouteRepository(private val db: AppDatabase) {
     suspend fun getRouteById(id: String): Route? =
         db.routeDao().getRouteById(id)?.toDomain()
 
+    suspend fun getLastIncompleteRoute(): Route? =
+        db.routeDao().getLastIncompleteRoute()?.toDomain()
+
     suspend fun getPointsForRoute(id: String): List<LocationPoint> =
         db.locationPointDao().getPointsForRoute(id).map { it.toDomain() }
 
@@ -47,7 +50,8 @@ class RouteRepository(private val db: AppDatabase) {
         avgSpeedKmh = avgSpeedKmh,
         elevationGainM = elevationGainM,
         calories = calories,
-        category = category
+        category = category,
+        completed = completed
     )
 
     private fun Route.toEntity() = RouteEntity(
@@ -61,16 +65,19 @@ class RouteRepository(private val db: AppDatabase) {
         avgSpeedKmh = avgSpeedKmh,
         elevationGainM = elevationGainM,
         calories = calories,
-        category = category
+        category = category,
+        completed = completed
     )
 
     private fun LocationPointEntity.toDomain() = LocationPoint(
         lat = lat, lng = lng, altitude = altitude,
-        timestamp = timestamp, speed = speed, accuracy = accuracy
+        timestamp = timestamp, speed = speed, accuracy = accuracy,
+        bearing = bearing
     )
 
     private fun LocationPoint.toEntity(routeId: String) = LocationPointEntity(
         routeId = routeId, lat = lat, lng = lng, altitude = altitude,
-        timestamp = timestamp, speed = speed, accuracy = accuracy
+        timestamp = timestamp, speed = speed, accuracy = accuracy,
+        bearing = bearing
     )
 }

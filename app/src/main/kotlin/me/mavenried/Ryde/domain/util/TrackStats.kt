@@ -45,6 +45,22 @@ object TrackStats {
         return distanceKm / (durationMs / 3_600_000.0)
     }
 
+    fun topSpeedKmh(points: List<LocationPoint>): Double =
+        (points.maxOfOrNull { it.speed } ?: 0f) * 3.6
+
+    /** Moving time: sum of intervals between consecutive points where the gap is < 30 s (excludes auto-pause gaps). */
+    fun movingTimeSec(points: List<LocationPoint>): Long {
+        if (points.size < 2) return 0L
+        return points.zipWithNext().sumOf { (a, b) ->
+            val gap = b.timestamp - a.timestamp
+            if (gap in 1L..30_000L) gap else 0L
+        } / 1000L
+    }
+
+    /** Stopped time = total duration minus moving time derived from point timestamps. */
+    fun stoppedTimeSec(totalDurationMs: Long, points: List<LocationPoint>): Long =
+        ((totalDurationMs / 1000L) - movingTimeSec(points)).coerceAtLeast(0L)
+
     fun estimatedCaloriesKcal(
         activityType: ActivityType,
         distanceKm: Double,

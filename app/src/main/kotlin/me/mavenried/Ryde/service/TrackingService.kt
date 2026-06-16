@@ -101,23 +101,23 @@ class TrackingService : LifecycleService() {
         pointBuffer.clear()
         pendingDbPoints.clear()
 
-        // Create and save initial route immediately to satisfy Foreign Key constraints
         val initialRoute = Route(
             id = currentRouteId,
             activityType = currentActivityType,
             name = autoName(currentActivityType, startTimeMs),
             startTime = startTimeMs,
-            endTime = startTimeMs, // Will be updated on stop
+            endTime = startTimeMs,
             distanceKm = 0.0,
             avgPace = 0.0,
             avgSpeedKmh = 0.0,
             elevationGainM = 0.0,
             calories = 0.0,
-            category = "Other"
+            category = "Other",
+            completed = false
         )
-        lifecycleScope.launch { 
+        lifecycleScope.launch {
             try {
-                repository.saveRoute(initialRoute) 
+                repository.saveRoute(initialRoute)
                 FileLogger.log(this@TrackingService, "Initial route saved: $currentRouteId")
             } catch (e: Exception) {
                 FileLogger.logError(this@TrackingService, "Failed to save initial route", e)
@@ -129,9 +129,34 @@ class TrackingService : LifecycleService() {
         pushState()
     }
 
+    fun resumeFromCrash(routeId: String, activityType: ActivityType, savedStartTime: Long) {
+        FileLogger.log(this, "Resuming crashed route: $routeId")
+        currentActivityType = activityType
+        currentRouteId = routeId
+        startTimeMs = savedStartTime
+        totalPausedMs = 0L
+        pausedAtMs = 0L
+        isPaused = false
+        isAutoPaused = false
+        lastSpeedMs = 0f
+        pointBuffer.clear()
+        pendingDbPoints.clear()
+        lifecycleScope.launch {
+            try {
+                val existing = repository.getPointsForRoute(routeId)
+                pointBuffer.addAll(existing)
+                FileLogger.log(this@TrackingService, "Loaded ${existing.size} existing points for crash resume")
+            } catch (e: Exception) {
+                FileLogger.logError(this@TrackingService, "Failed to load existing points on resume", e)
+            }
+        }
+        requestLocationUpdates()
+        startTimer()
+        pushState()
+    }
+
     fun pauseTracking() {
         if (isPaused) return
-        // Settle any in-progress auto-pause before starting manual pause
         if (isAutoPaused) {
             totalPausedMs += System.currentTimeMillis() - pausedAtMs
             isAutoPaused = false
@@ -200,7 +225,8 @@ class TrackingService : LifecycleService() {
                 avgSpeedKmh = avgSpeed,
                 elevationGainM = elevGain,
                 calories = calories,
-                category = "Other"
+                category = "Other",
+                completed = true
             )
             val allPoints = pointBuffer.toList()
             val routeId = currentRouteId
@@ -240,7 +266,6 @@ class TrackingService : LifecycleService() {
         }
     }
 
-    // When auto-paused, drop the distance filter so we detect the first movement
     private fun requestLocationUpdatesStationary() {
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2_000L)
             .setMinUpdateDistanceMeters(0f)
@@ -259,10 +284,10 @@ class TrackingService : LifecycleService() {
             altitude = location.altitude,
             timestamp = location.time,
             speed = location.speed,
-            accuracy = location.accuracy
+            accuracy = location.accuracy,
+            bearing = if (location.hasBearing()) location.bearing else 0f
         )
-        
-        // Auto-pause logic: if speed < 0.5 m/s (~1.8 km/h) for a few updates
+
         if (point.accuracy <= 25f) {
             lastSpeedMs = point.speed
             if (point.speed < 0.5f && !isAutoPaused && !isPaused) {
@@ -294,9 +319,9 @@ class TrackingService : LifecycleService() {
         val toSave = pendingDbPoints.toList()
         val routeId = currentRouteId
         pendingDbPoints.clear()
-        lifecycleScope.launch { 
+        lifecycleScope.launch {
             try {
-                repository.savePoints(routeId, toSave) 
+                repository.savePoints(routeId, toSave)
             } catch (e: Exception) {
                 FileLogger.logError(this@TrackingService, "Failed to flush points for $routeId", e)
             }
@@ -339,7 +364,7 @@ class TrackingService : LifecycleService() {
         val calendar = Calendar.getInstance().apply { timeInMillis = startMs }
         val hour = calendar.get(Calendar.HOUR_OF_DAY)
         val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
-        
+
         val dayName = when (dayOfWeek) {
             Calendar.SATURDAY, Calendar.SUNDAY -> "Weekend"
             else -> "Weekday"

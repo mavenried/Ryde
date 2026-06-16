@@ -2,9 +2,9 @@ package me.mavenried.Ryde.ui.components
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.DirectionsBike
-import androidx.compose.material.icons.rounded.DirectionsRun
-import androidx.compose.material.icons.rounded.DirectionsWalk
+import androidx.compose.material.icons.automirrored.rounded.DirectionsBike
+import androidx.compose.material.icons.automirrored.rounded.DirectionsRun
+import androidx.compose.material.icons.automirrored.rounded.DirectionsWalk
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -41,9 +41,9 @@ fun ActivityPicker(
 
 private val ActivityType.icon: ImageVector
     get() = when (this) {
-        ActivityType.RUNNING -> Icons.Rounded.DirectionsRun
-        ActivityType.CYCLING -> Icons.Rounded.DirectionsBike
-        ActivityType.WALKING -> Icons.Rounded.DirectionsWalk
+        ActivityType.RUNNING -> Icons.AutoMirrored.Rounded.DirectionsRun
+        ActivityType.CYCLING -> Icons.AutoMirrored.Rounded.DirectionsBike
+        ActivityType.WALKING -> Icons.AutoMirrored.Rounded.DirectionsWalk
     }
 
 private val ActivityType.label: String

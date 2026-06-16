@@ -28,16 +28,18 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         UserPrefs.initTheme(this)
+        UserPrefs.initMetric(this)
         requestInitialPermissions()
         setContent {
             val theme by UserPrefs.themeFlow.collectAsState()
+            val isMetric by UserPrefs.metricsFlow.collectAsState()
             val systemDark = isSystemInDarkTheme()
             val darkTheme = when (theme) {
                 "dark" -> true
                 "light" -> false
                 else -> systemDark
             }
-            RydeTheme(darkTheme = darkTheme) {
+            RydeTheme(darkTheme = darkTheme, isMetric = isMetric) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
