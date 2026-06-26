@@ -1,24 +1,32 @@
 package me.mavenried.Ryde.ui.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.FilterChip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.DirectionsBike
 import androidx.compose.material.icons.automirrored.rounded.DirectionsRun
 import androidx.compose.material.icons.automirrored.rounded.DirectionsWalk
-import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DirectionsBike
 import androidx.compose.material.icons.rounded.DirectionsRun
 import androidx.compose.material.icons.rounded.DirectionsWalk
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.QueryStats
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SentimentDissatisfied
 import androidx.compose.material3.*
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,8 +34,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import me.mavenried.Ryde.domain.model.ActivityType
@@ -46,47 +57,70 @@ fun HistoryScreen(
     onRouteClick: (String) -> Unit,
     onNavigateToPersonalRecords: () -> Unit = {},
     onNavigateToStats: () -> Unit = {},
+    onNavigateToHeatmap: () -> Unit = {},
     vm: HistoryViewModel = viewModel()
 ) {
     val routes by vm.routes.collectAsState()
     val stats by vm.totalStats.collectAsState()
     val streak by vm.streak.collectAsState()
-    var showClearDialog by remember { mutableStateOf(false) }
+    val availableTags by vm.availableTags.collectAsState()
+    val selectedTag by vm.selectedTag.collectAsState()
+    val searchQuery by vm.searchQuery.collectAsState()
+    var searchActive by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
 
-    if (showClearDialog) {
-        AlertDialog(
-            onDismissRequest = { showClearDialog = false },
-            title = { Text("Clear all rides?") },
-            text = { Text("This will permanently delete all ${routes.size} rides. This cannot be undone.") },
-            confirmButton = {
-                TextButton(
-                    onClick = { vm.deleteAll(); showClearDialog = false },
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                ) { Text("Clear all") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showClearDialog = false }) { Text("Cancel") }
-            }
-        )
+    LaunchedEffect(searchActive) {
+        if (searchActive) focusRequester.requestFocus()
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("History") },
+                title = {
+                    if (searchActive) {
+                        TextField(
+                            value = searchQuery,
+                            onValueChange = { vm.setSearchQuery(it) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester),
+                            placeholder = { Text("Search rides…") },
+                            singleLine = true,
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                                unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                                focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                                unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                            ),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(onSearch = { /* dismiss keyboard */ })
+                        )
+                    } else {
+                        Text("History")
+                    }
+                },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = {
+                        if (searchActive) {
+                            searchActive = false
+                            vm.setSearchQuery("")
+                        } else {
+                            onNavigateBack()
+                        }
+                    }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    if (routes.isNotEmpty()) {
-                        IconButton(onClick = { showClearDialog = true }) {
-                            Icon(
-                                Icons.Rounded.DeleteSweep,
-                                contentDescription = "Clear all",
-                                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                            )
+                    if (searchActive) {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { vm.setSearchQuery("") }) {
+                                Icon(Icons.Rounded.Close, contentDescription = "Clear search")
+                            }
+                        }
+                    } else {
+                        IconButton(onClick = { searchActive = true }) {
+                            Icon(Icons.Rounded.Search, contentDescription = "Search")
                         }
                     }
                 },
@@ -128,11 +162,21 @@ fun HistoryScreen(
                     HistoryQuickActions(
                         streak = streak,
                         onPersonalRecords = onNavigateToPersonalRecords,
-                        onStats = onNavigateToStats
+                        onStats = onNavigateToStats,
+                        onHeatmap = onNavigateToHeatmap
                     )
                 }
                 item {
                     TotalStatsHeader(stats = stats)
+                }
+                if (availableTags.size > 1) {
+                    item {
+                        TagFilterRow(
+                            tags = availableTags,
+                            selectedTag = selectedTag,
+                            onSelect = { vm.setTagFilter(it) }
+                        )
+                    }
                 }
                 items(routes, key = { it.id }) { route ->
                     RouteCard(
@@ -150,7 +194,8 @@ fun HistoryScreen(
 private fun HistoryQuickActions(
     streak: Int,
     onPersonalRecords: () -> Unit,
-    onStats: () -> Unit
+    onStats: () -> Unit,
+    onHeatmap: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -209,6 +254,15 @@ private fun HistoryQuickActions(
             Icon(Icons.Rounded.QueryStats, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
             Text("Stats", style = MaterialTheme.typography.labelLarge)
+        }
+        OutlinedButton(
+            onClick = onHeatmap,
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            Icon(Icons.Rounded.Map, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Map", style = MaterialTheme.typography.labelLarge)
         }
     }
 }
@@ -315,6 +369,33 @@ private fun StatItem(label: String, value: String, modifier: Modifier = Modifier
 }
 
 @Composable
+private fun TagFilterRow(
+    tags: List<String>,
+    selectedTag: String?,
+    onSelect: (String?) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        FilterChip(
+            selected = selectedTag == null,
+            onClick = { onSelect(null) },
+            label = { Text("All") }
+        )
+        tags.forEach { tag ->
+            FilterChip(
+                selected = selectedTag == tag,
+                onClick = { onSelect(if (selectedTag == tag) null else tag) },
+                label = { Text(tag) }
+            )
+        }
+    }
+}
+
+@Composable
 private fun RouteCard(route: Route, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val isMetric = LocalIsMetric.current
     val dateStr = SimpleDateFormat("EEE, dd MMM · HH:mm", Locale.getDefault())
@@ -350,11 +431,29 @@ private fun RouteCard(route: Route, onClick: () -> Unit, modifier: Modifier = Mo
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = route.name, style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = dateStr,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = dateStr,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                    )
+                    if (route.category != "Other") {
+                        Surface(
+                            shape = MaterialTheme.shapes.extraSmall,
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Text(
+                                text = route.category,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.width(16.dp))

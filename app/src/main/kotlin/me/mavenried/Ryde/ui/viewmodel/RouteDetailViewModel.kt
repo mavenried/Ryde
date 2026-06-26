@@ -7,6 +7,7 @@ import me.mavenried.Ryde.data.db.AppDatabase
 import me.mavenried.Ryde.domain.model.LocationPoint
 import me.mavenried.Ryde.domain.model.Route
 import me.mavenried.Ryde.domain.repository.RouteRepository
+import me.mavenried.Ryde.domain.util.LapSplit
 import me.mavenried.Ryde.domain.util.TrackStats
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,6 +29,9 @@ class RouteDetailViewModel(app: Application) : AndroidViewModel(app) {
     private val _stoppedTimeSec = MutableStateFlow(0L)
     val stoppedTimeSec: StateFlow<Long> = _stoppedTimeSec.asStateFlow()
 
+    private val _lapSplits = MutableStateFlow<List<LapSplit>>(emptyList())
+    val lapSplits: StateFlow<List<LapSplit>> = _lapSplits.asStateFlow()
+
     fun load(id: String) {
         viewModelScope.launch {
             val r = repository.getRouteById(id)
@@ -35,6 +39,7 @@ class RouteDetailViewModel(app: Application) : AndroidViewModel(app) {
             _route.value = r
             _points.value = pts
             _topSpeedKmh.value = TrackStats.topSpeedKmh(pts)
+            _lapSplits.value = TrackStats.computeLapSplits(pts)
             r?.let { route ->
                 _stoppedTimeSec.value = TrackStats.stoppedTimeSec(route.endTime - route.startTime, pts)
             }
@@ -45,6 +50,13 @@ class RouteDetailViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             repository.renameRoute(id, newName)
             _route.value = _route.value?.copy(name = newName)
+        }
+    }
+
+    fun updateTag(id: String, tag: String) {
+        viewModelScope.launch {
+            repository.updateTag(id, tag)
+            _route.value = _route.value?.copy(category = tag)
         }
     }
 

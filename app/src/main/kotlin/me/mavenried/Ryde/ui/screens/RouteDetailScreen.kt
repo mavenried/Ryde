@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.*
@@ -21,15 +22,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.mavenried.Ryde.domain.model.ActivityType
 import me.mavenried.Ryde.ui.components.ElevationChart
 import me.mavenried.Ryde.ui.components.RouteMapView
 import me.mavenried.Ryde.ui.components.SpeedChart
 import me.mavenried.Ryde.ui.theme.LocalIsMetric
+import me.mavenried.Ryde.ui.viewmodel.ROUTE_TAGS
 import me.mavenried.Ryde.ui.viewmodel.RouteDetailViewModel
 import me.mavenried.Ryde.util.GpxExporter
+import me.mavenried.Ryde.util.ShareCardRenderer
 import me.mavenried.Ryde.util.UserPrefs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,13 +47,17 @@ fun RouteDetailScreen(
     vm: RouteDetailViewModel = viewModel()
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val route by vm.route.collectAsState()
     val points by vm.points.collectAsState()
     val topSpeedKmh by vm.topSpeedKmh.collectAsState()
     val stoppedTimeSec by vm.stoppedTimeSec.collectAsState()
+    val lapSplits by vm.lapSplits.collectAsState()
     val isMetric = LocalIsMetric.current
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
+    var showTagDialog by remember { mutableStateOf(false) }
+    var showShareMenu by remember { mutableStateOf(false) }
     var renameText by remember { mutableStateOf("") }
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -79,14 +90,38 @@ fun RouteDetailScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    if (renameText.isNotBlank()) {
-                        vm.renameRoute(routeId, renameText.trim())
-                    }
+                    if (renameText.isNotBlank()) vm.renameRoute(routeId, renameText.trim())
                     showRenameDialog = false
                 }) { Text("Rename") }
             },
             dismissButton = {
                 TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    if (showTagDialog) {
+        AlertDialog(
+            onDismissRequest = { showTagDialog = false },
+            title = { Text("Tag this ride") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ROUTE_TAGS.chunked(3).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEach { tag ->
+                                FilterChip(
+                                    selected = route?.category == tag,
+                                    onClick = { vm.updateTag(routeId, tag); showTagDialog = false },
+                                    label = { Text(tag) }
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showTagDialog = false }) { Text("Cancel") }
             }
         )
     }
@@ -112,13 +147,30 @@ fun RouteDetailScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        route?.name ?: "Route",
-                        modifier = Modifier.clickable {
-                            renameText = route?.name ?: ""
-                            showRenameDialog = true
+                    Column {
+                        Text(
+                            route?.name ?: "Route",
+                            modifier = Modifier.clickable {
+                                renameText = route?.name ?: ""
+                                showRenameDialog = true
+                            }
+                        )
+                        val tag = route?.category
+                        if (tag != null && tag != "Other") {
+                            Surface(
+                                shape = MaterialTheme.shapes.extraSmall,
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                modifier = Modifier.clickable { showTagDialog = true }
+                            ) {
+                                Text(
+                                    tag,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
                         }
-                    )
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
@@ -126,11 +178,43 @@ fun RouteDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        val name = route?.name?.replace(" ", "_") ?: "route"
-                        exportLauncher.launch("Ryde_$name.gpx")
-                    }) {
-                        Icon(Icons.Rounded.Share, contentDescription = "Export GPX")
+                    Box {
+                        IconButton(onClick = { showShareMenu = true }) {
+                            Icon(Icons.Rounded.Share, contentDescription = "Share")
+                        }
+                        DropdownMenu(
+                            expanded = showShareMenu,
+                            onDismissRequest = { showShareMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Export GPX") },
+                                onClick = {
+                                    showShareMenu = false
+                                    val name = route?.name?.replace(" ", "_") ?: "route"
+                                    exportLauncher.launch("Ryde_$name.gpx")
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Share as image") },
+                                onClick = {
+                                    showShareMenu = false
+                                    val r = route ?: return@DropdownMenuItem
+                                    val pts = points
+                                    scope.launch {
+                                        val intent = withContext(Dispatchers.IO) {
+                                            ShareCardRenderer.buildShareIntent(context, r, pts)
+                                        }
+                                        context.startActivity(
+                                            android.content.Intent.createChooser(intent, "Share ride")
+                                        )
+                                    }
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Tag ride") },
+                                onClick = { showShareMenu = false; showTagDialog = true }
+                            )
+                        }
                     }
                     IconButton(onClick = { showDeleteDialog = true }) {
                         Icon(
@@ -251,6 +335,70 @@ fun RouteDetailScreen(
                                 if (row.size == 1) Spacer(modifier = Modifier.weight(1f))
                             }
                         }
+                    }
+
+                    // Lap splits
+                    if (lapSplits.isNotEmpty()) {
+                        Text(
+                            "Lap Splits",
+                            style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 8.dp),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        ElevatedCard(modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth()) {
+                                    Text("LAP", style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                                        modifier = Modifier.weight(0.8f))
+                                    Text("TIME", style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                                        modifier = Modifier.weight(1.5f))
+                                    Text(
+                                        if (r.activityType == ActivityType.CYCLING) "SPEED" else "PACE",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f),
+                                        modifier = Modifier.weight(1.5f)
+                                    )
+                                }
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
+                                lapSplits.forEach { lap ->
+                                    val lapMin = lap.durationMs / 60_000L
+                                    val lapSec = (lap.durationMs % 60_000L) / 1_000L
+                                    val movStr = if (r.activityType == ActivityType.CYCLING) {
+                                        "%.1f km/h".format(lap.avgSpeedKmh)
+                                    } else {
+                                        val pace = if (lap.avgSpeedKmh > 0) 60.0 / lap.avgSpeedKmh else 0.0
+                                        val pm = pace.toInt(); val ps = ((pace - pm) * 60).toInt()
+                                        "%d:%02d /km".format(pm, ps)
+                                    }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            "${lap.lapNumber}",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.weight(0.8f)
+                                        )
+                                        Text(
+                                            "%d:%02d".format(lapMin, lapSec),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.weight(1.5f)
+                                        )
+                                        Text(
+                                            movStr,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier.weight(1.5f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
                     }
                 } ?: Box(
                     modifier = Modifier

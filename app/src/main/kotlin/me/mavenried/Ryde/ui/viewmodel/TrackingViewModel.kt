@@ -87,10 +87,14 @@ class TrackingViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun startTracking(activityType: ActivityType) {
+    fun startTracking(
+        activityType: ActivityType,
+        goalDistanceKm: Double? = null,
+        goalDurationMs: Long? = null
+    ) {
         val ctx = getApplication<Application>()
         ctx.startForegroundService(Intent(ctx, TrackingService::class.java))
-        trackingService?.startTracking(activityType)
+        trackingService?.startTracking(activityType, goalDistanceKm, goalDurationMs)
     }
 
     fun resumeCrashedTracking() {
@@ -114,7 +118,7 @@ class TrackingViewModel(app: Application) : AndroidViewModel(app) {
 
     fun pauseTracking() { trackingService?.pauseTracking() }
     fun resumeTracking() { trackingService?.resumeTracking() }
-    fun stopTracking() { trackingService?.stopTracking() }
+    fun stopTracking(tag: String = "Other") { trackingService?.stopTracking(tag) }
     fun discardTracking() { trackingService?.discardTracking() }
 
     fun setOverlayRoute(routeId: String) {

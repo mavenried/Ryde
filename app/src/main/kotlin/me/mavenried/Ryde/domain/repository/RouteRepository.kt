@@ -42,6 +42,8 @@ class RouteRepository(private val db: AppDatabase) {
 
     suspend fun renameRoute(id: String, name: String) = db.routeDao().updateName(id, name)
 
+    suspend fun updateTag(id: String, tag: String) = db.routeDao().updateCategory(id, tag)
+
     suspend fun deleteAllRoutes() = db.routeDao().deleteAll()
 
     private fun RouteEntity.toDomain() = Route(

@@ -12,6 +12,8 @@ object UserPrefs {
     private const val KEY_ONBOARDED = "onboarded"
     private const val KEY_THEME = "theme"
     private const val KEY_USE_METRIC = "use_metric"
+    private const val KEY_WEEKLY_NOTIFICATION = "weekly_notification"
+    private const val KEY_AUTO_START = "auto_start"
 
     private val _themeFlow = MutableStateFlow("system")
     val themeFlow: StateFlow<String> = _themeFlow.asStateFlow()
@@ -70,6 +72,22 @@ object UserPrefs {
     fun setOnboarded(context: Context) =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_ONBOARDED, true).apply()
+
+    fun isWeeklyNotificationEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_WEEKLY_NOTIFICATION, true)
+
+    fun setWeeklyNotificationEnabled(context: Context, enabled: Boolean) =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_WEEKLY_NOTIFICATION, enabled).apply()
+
+    fun isAutoStartEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_AUTO_START, true)
+
+    fun setAutoStartEnabled(context: Context, enabled: Boolean) =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_AUTO_START, enabled).apply()
 
     fun kgToLbs(kg: Double) = kg * 2.20462
     fun lbsToKg(lbs: Double) = lbs / 2.20462

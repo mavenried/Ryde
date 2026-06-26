@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.SportsScore
 import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Navigation
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -31,6 +32,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import android.location.Geocoder
+import androidx.compose.material3.FilterChip
 import me.mavenried.Ryde.domain.model.ActivityType
 import me.mavenried.Ryde.service.TrackingState
 import me.mavenried.Ryde.ui.components.*
@@ -62,6 +64,8 @@ fun HomeScreen(
     var showStopDialog by remember { mutableStateOf(false) }
     var showOnboarding by remember { mutableStateOf(false) }
     var showOverlaySelector by remember { mutableStateOf(false) }
+    var goalDistanceKm by remember { mutableStateOf<Double?>(null) }
+    var goalDurationMs by remember { mutableStateOf<Long?>(null) }
     val context = LocalContext.current
 
     LaunchedEffect(Unit) {
@@ -166,7 +170,7 @@ fun HomeScreen(
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
                     !PermissionHelper.hasBackgroundLocationPermission(context) ->
                 bgLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-            else -> vm.startTracking(selectedActivity)
+            else -> vm.startTracking(selectedActivity, goalDistanceKm, goalDurationMs)
         }
     }
 
@@ -179,7 +183,10 @@ fun HomeScreen(
             onSettings = onNavigateToSettings,
             overlayPoints = overlayPoints,
             onShowOverlaySelector = { showOverlaySelector = true },
-            hasOverlay = overlayPoints.isNotEmpty()
+            hasOverlay = overlayPoints.isNotEmpty(),
+            goalDistanceKm = goalDistanceKm,
+            goalDurationMs = goalDurationMs,
+            onGoalChange = { dist, dur -> goalDistanceKm = dist; goalDurationMs = dur }
         )
         is TrackingState.Active -> ActiveContent(
             state = s,
@@ -198,42 +205,60 @@ fun HomeScreen(
         val activeState = state as? TrackingState.Active
         val isShort = activeState != null &&
                 activeState.elapsedMs < 60_000L && activeState.distanceKm < 0.1
+        var selectedTag by remember { mutableStateOf("Other") }
 
         AlertDialog(
             onDismissRequest = { showStopDialog = false },
             title = { Text(if (isShort) "Short ride" else "End ride?") },
             text = {
-                if (isShort) {
-                    val mins = (activeState!!.elapsedMs / 60_000L)
-                    val secs = (activeState.elapsedMs % 60_000L) / 1_000L
-                    Text("Only ${"%d:%02d".format(mins, secs)} and ${"%.2f".format(activeState.distanceKm)} km — worth saving?")
-                } else {
-                    Text("Save your route to history, or discard it entirely.")
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (isShort) {
+                        val mins = (activeState!!.elapsedMs / 60_000L)
+                        val secs = (activeState.elapsedMs % 60_000L) / 1_000L
+                        Text("Only ${"%d:%02d".format(mins, secs)} and ${"%.2f".format(activeState.distanceKm)} km — worth saving?")
+                    } else {
+                        Text("Save your route to history, or discard it entirely.")
+                    }
+                    if (!isShort) {
+                        Text("Tag", style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                        me.mavenried.Ryde.ui.viewmodel.ROUTE_TAGS.chunked(3).forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                row.forEach { tag ->
+                                    FilterChip(
+                                        selected = selectedTag == tag,
+                                        onClick = { selectedTag = tag },
+                                        label = { Text(tag, style = MaterialTheme.typography.labelSmall) }
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {
-                if (isShort) {
-                    TextButton(onClick = { showStopDialog = false; vm.stopTracking() }) {
-                        Text("Save anyway")
-                    }
-                } else {
-                    TextButton(onClick = { showStopDialog = false; vm.stopTracking() }) {
-                        Text("Save")
-                    }
-                }
+                TextButton(onClick = {
+                    showStopDialog = false
+                    goalDistanceKm = null
+                    goalDurationMs = null
+                    vm.stopTracking(selectedTag)
+                }) { Text(if (isShort) "Save anyway" else "Save") }
             },
             dismissButton = {
                 Row {
-                    TextButton(onClick = { showStopDialog = false; vm.discardTracking() }) {
+                    TextButton(onClick = {
+                        showStopDialog = false
+                        goalDistanceKm = null
+                        goalDurationMs = null
+                        vm.discardTracking()
+                    }) {
                         Text(
-                            if (isShort) "Discard" else "Discard",
+                            "Discard",
                             color = if (isShort) MaterialTheme.colorScheme.primary
                                     else MaterialTheme.colorScheme.error
                         )
                     }
-                    TextButton(onClick = { showStopDialog = false }) {
-                        Text("Cancel")
-                    }
+                    TextButton(onClick = { showStopDialog = false }) { Text("Cancel") }
                 }
             }
         )
@@ -323,8 +348,15 @@ private fun IdleContent(
     onSettings: () -> Unit,
     overlayPoints: List<List<me.mavenried.Ryde.domain.model.LocationPoint>>,
     onShowOverlaySelector: () -> Unit,
-    hasOverlay: Boolean
+    hasOverlay: Boolean,
+    goalDistanceKm: Double?,
+    goalDurationMs: Long?,
+    onGoalChange: (Double?, Long?) -> Unit
 ) {
+    var showGoalDialog by remember { mutableStateOf(false) }
+    var goalMode by remember { mutableStateOf(if (goalDurationMs != null) "time" else "distance") }
+    var goalDistText by remember { mutableStateOf(goalDistanceKm?.let { "%.1f".format(it) } ?: "") }
+    var goalMinText by remember { mutableStateOf(goalDurationMs?.let { (it / 60_000L).toString() } ?: "") }
     Box(modifier = Modifier.fillMaxSize()) {
         TrackingMapView(
             points = emptyList(),
@@ -408,19 +440,64 @@ private fun IdleContent(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     ActivityPicker(selected = selected, onSelect = onSelect)
-                    Spacer(modifier = Modifier.height(20.dp))
-                    Button(
-                        onClick = onStart,
-                        modifier = Modifier.fillMaxWidth(),
-                        contentPadding = PaddingValues(vertical = 14.dp)
-                    ) {
-                        Icon(
-                            Icons.Rounded.PlayArrow,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (showGoalDialog) {
+                        GoalDialog(
+                            goalMode = goalMode,
+                            goalDistText = goalDistText,
+                            goalMinText = goalMinText,
+                            onModeChange = { mode ->
+                                goalMode = mode
+                                onGoalChange(null, null)
+                            },
+                            onDistTextChange = { v ->
+                                goalDistText = v
+                                onGoalChange(v.toDoubleOrNull()?.takeIf { it > 0 }, null)
+                            },
+                            onMinTextChange = { v ->
+                                goalMinText = v
+                                onGoalChange(null, v.toLongOrNull()?.takeIf { it > 0 }?.let { it * 60_000L })
+                            },
+                            onClear = {
+                                goalDistText = ""
+                                goalMinText = ""
+                                onGoalChange(null, null)
+                            },
+                            onDismiss = { showGoalDialog = false }
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Start", style = MaterialTheme.typography.labelLarge)
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val goalSet = goalDistanceKm != null || goalDurationMs != null
+                        Button(
+                            onClick = { showGoalDialog = true },
+                            contentPadding = PaddingValues(vertical = 14.dp, horizontal = 16.dp)
+                        ) {
+                            Icon(Icons.Rounded.SportsScore, contentDescription = "Goal", modifier = Modifier.size(18.dp))
+                            if (goalSet) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                val label = when {
+                                    goalDistanceKm != null -> "%.1f km".format(goalDistanceKm)
+                                    else -> "${goalDurationMs!! / 60_000L} min"
+                                }
+                                Text(label, style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
+                        Button(
+                            onClick = onStart,
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(vertical = 14.dp)
+                        ) {
+                            Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Start", style = MaterialTheme.typography.labelLarge)
+                        }
                     }
                 }
 
@@ -659,4 +736,65 @@ private fun ActiveContent(
                 .onSizeChanged { panelHeightPx = it.height }
         )
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GoalDialog(
+    goalMode: String,
+    goalDistText: String,
+    goalMinText: String,
+    onModeChange: (String) -> Unit,
+    onDistTextChange: (String) -> Unit,
+    onMinTextChange: (String) -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Set a goal") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    SegmentedButton(
+                        selected = goalMode == "distance",
+                        onClick = { onModeChange("distance") },
+                        shape = SegmentedButtonDefaults.itemShape(0, 2),
+                        label = { Text("Distance") }
+                    )
+                    SegmentedButton(
+                        selected = goalMode == "time",
+                        onClick = { onModeChange("time") },
+                        shape = SegmentedButtonDefaults.itemShape(1, 2),
+                        label = { Text("Time") }
+                    )
+                }
+                if (goalMode == "distance") {
+                    OutlinedTextField(
+                        value = goalDistText,
+                        onValueChange = onDistTextChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Distance (km)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = goalMinText,
+                        onValueChange = onMinTextChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Duration (minutes)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Set") }
+        },
+        dismissButton = {
+            TextButton(onClick = { onClear(); onDismiss() }) { Text("Clear") }
+        }
+    )
 }

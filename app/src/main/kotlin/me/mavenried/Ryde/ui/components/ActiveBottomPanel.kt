@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.rounded.VolumeDown
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -110,6 +111,51 @@ fun ActiveBottomPanel(
             MusicRow()
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+            // Goal progress bar
+            val goalDist = state.goalDistanceKm
+            val goalDur = state.goalDurationMs
+            if (goalDist != null || goalDur != null) {
+                val progress = when {
+                    goalDist != null -> (state.distanceKm / goalDist).coerceIn(0.0, 1.0).toFloat()
+                    goalDur != null -> (state.elapsedMs.toDouble() / goalDur).coerceIn(0.0, 1.0).toFloat()
+                    else -> 0f
+                }
+                val goalLabel = when {
+                    goalDist != null -> "%.1f / %.1f km".format(state.distanceKm, goalDist)
+                    goalDur != null -> {
+                        val elapsed = state.elapsedMs / 60_000L
+                        val total = goalDur / 60_000L
+                        "$elapsed / $total min"
+                    }
+                    else -> ""
+                }
+                Column(modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 6.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            if (state.goalReached) "Goal reached!" else "Goal",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (state.goalReached) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                        Text(
+                            goalLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(3.dp))
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = if (state.goalReached) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.tertiary
+                    )
+                }
+            }
 
             // Auto-pause banner
             if (state.isAutoPaused) {

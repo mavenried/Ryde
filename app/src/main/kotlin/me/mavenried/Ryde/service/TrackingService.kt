@@ -5,6 +5,7 @@ import android.content.Intent
 import android.location.Location
 import android.os.Binder
 import android.os.IBinder
+import android.speech.tts.TextToSpeech
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.location.*
@@ -17,6 +18,8 @@ import me.mavenried.Ryde.domain.util.TrackStats
 import me.mavenried.Ryde.util.FileLogger
 import me.mavenried.Ryde.util.ReverseGeocoder
 import me.mavenried.Ryde.util.UserPrefs
+import me.mavenried.Ryde.widget.RydeWidget
+import androidx.glance.appwidget.updateAll
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +27,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.Calendar
+import java.util.Locale
 import java.util.UUID
 
 sealed class TrackingState {
@@ -37,7 +41,11 @@ sealed class TrackingState {
         val calories: Double,
         val points: List<LocationPoint>,
         val isPaused: Boolean = false,
-        val isAutoPaused: Boolean = false
+        val isAutoPaused: Boolean = false,
+        val lapCount: Int = 0,
+        val goalDistanceKm: Double? = null,
+        val goalDurationMs: Long? = null,
+        val goalReached: Boolean = false
     ) : TrackingState()
 }
 
@@ -67,15 +75,38 @@ class TrackingService : LifecycleService() {
     private var currentRouteId = ""
     private var timerJob: Job? = null
 
+    // Goal tracking
+    private var goalDistanceKm: Double? = null
+    private var goalDurationMs: Long? = null
+    private var goalReached = false
+
+    // Lap / audio cue tracking
+    private var lastAnnouncedKm = 0
+    private var tts: TextToSpeech? = null
+    private var ttsReady = false
+
     override fun onCreate() {
         super.onCreate()
         fusedClient = LocationServices.getFusedLocationProviderClient(this)
         repository = RouteRepository(AppDatabase.getInstance(this))
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
-                result.lastLocation?.let { onNewLocation(it) }
+                result.locations.forEach { onNewLocation(it) }
             }
         }
+        tts = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                tts?.language = Locale.getDefault()
+                ttsReady = true
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        tts?.stop()
+        tts?.shutdown()
+        tts = null
+        super.onDestroy()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -89,7 +120,11 @@ class TrackingService : LifecycleService() {
         return binder
     }
 
-    fun startTracking(activityType: ActivityType) {
+    fun startTracking(
+        activityType: ActivityType,
+        goalDistanceKm: Double? = null,
+        goalDurationMs: Long? = null
+    ) {
         FileLogger.log(this, "Starting tracking for $activityType")
         currentActivityType = activityType
         currentRouteId = UUID.randomUUID().toString()
@@ -100,6 +135,10 @@ class TrackingService : LifecycleService() {
         lastSpeedMs = 0f
         pointBuffer.clear()
         pendingDbPoints.clear()
+        this.goalDistanceKm = goalDistanceKm
+        this.goalDurationMs = goalDurationMs
+        goalReached = false
+        lastAnnouncedKm = 0
 
         val initialRoute = Route(
             id = currentRouteId,
@@ -119,6 +158,7 @@ class TrackingService : LifecycleService() {
             try {
                 repository.saveRoute(initialRoute)
                 FileLogger.log(this@TrackingService, "Initial route saved: $currentRouteId")
+                RydeWidget().updateAll(this@TrackingService)
             } catch (e: Exception) {
                 FileLogger.logError(this@TrackingService, "Failed to save initial route", e)
             }
@@ -139,12 +179,17 @@ class TrackingService : LifecycleService() {
         isPaused = false
         isAutoPaused = false
         lastSpeedMs = 0f
+        goalDistanceKm = null
+        goalDurationMs = null
+        goalReached = false
+        lastAnnouncedKm = 0
         pointBuffer.clear()
         pendingDbPoints.clear()
         lifecycleScope.launch {
             try {
                 val existing = repository.getPointsForRoute(routeId)
                 pointBuffer.addAll(existing)
+                lastAnnouncedKm = TrackStats.totalDistanceKm(existing).toInt()
                 FileLogger.log(this@TrackingService, "Loaded ${existing.size} existing points for crash resume")
             } catch (e: Exception) {
                 FileLogger.logError(this@TrackingService, "Failed to load existing points on resume", e)
@@ -188,7 +233,7 @@ class TrackingService : LifecycleService() {
         stopSelf()
     }
 
-    fun stopTracking() {
+    fun stopTracking(tag: String = "Other") {
         FileLogger.log(this, "Stopping tracking for $currentRouteId")
         fusedClient.removeLocationUpdates(locationCallback)
         stopTimer()
@@ -225,7 +270,7 @@ class TrackingService : LifecycleService() {
                 avgSpeedKmh = avgSpeed,
                 elevationGainM = elevGain,
                 calories = calories,
-                category = "Other",
+                category = tag,
                 completed = true
             )
             val allPoints = pointBuffer.toList()
@@ -233,6 +278,7 @@ class TrackingService : LifecycleService() {
 
             repository.saveRoute(route)
             repository.savePoints(routeId, allPoints)
+            RydeWidget().updateAll(this@TrackingService)
         }
 
         _state.value = TrackingState.Idle
@@ -246,6 +292,7 @@ class TrackingService : LifecycleService() {
             while (true) {
                 delay(1_000L)
                 pushState()
+                checkGoalByDuration()
             }
         }
     }
@@ -306,12 +353,62 @@ class TrackingService : LifecycleService() {
                 pointBuffer.add(point)
                 pendingDbPoints.add(point)
                 if (pendingDbPoints.size >= 10) flushPendingPoints()
+
+                val totalKm = TrackStats.totalDistanceKm(pointBuffer)
+                val completedKm = totalKm.toInt()
+                if (completedKm > lastAnnouncedKm) {
+                    lastAnnouncedKm = completedKm
+                    announceKmSplit(completedKm, totalKm)
+                }
+                checkGoalByDistance(totalKm)
             }
         } else {
             FileLogger.log(this, "Location rejected: accuracy ${point.accuracy}m")
         }
         pushState()
         updateNotification()
+    }
+
+    private fun announceKmSplit(lapNumber: Int, totalKm: Double) {
+        if (!ttsReady) return
+        val recentPoints = pointBuffer.takeLast(20)
+        val recentDurationMs = if (recentPoints.size >= 2)
+            recentPoints.last().timestamp - recentPoints.first().timestamp else 0L
+        val recentDistKm = TrackStats.totalDistanceKm(recentPoints)
+
+        val lapStr = if (currentActivityType == ActivityType.CYCLING) {
+            val speedKmh = if (recentDurationMs > 0) recentDistKm / (recentDurationMs / 3_600_000.0) else 0.0
+            "$lapNumber kilometer. Speed: %.0f kilometers per hour".format(speedKmh)
+        } else {
+            val pace = if (recentDistKm > 0 && recentDurationMs > 0)
+                (recentDurationMs / 60_000.0) / recentDistKm else 0.0
+            val paceMin = pace.toInt()
+            val paceSec = ((pace - paceMin) * 60).toInt()
+            "$lapNumber kilometer. Pace: $paceMin minutes $paceSec seconds per kilometer"
+        }
+        tts?.speak(lapStr, TextToSpeech.QUEUE_FLUSH, null, "lap_$lapNumber")
+    }
+
+    private fun checkGoalByDistance(totalKm: Double) {
+        val goal = goalDistanceKm ?: return
+        if (!goalReached && totalKm >= goal) {
+            goalReached = true
+            val msg = "Goal reached! %.1f kilometers complete".format(goal)
+            tts?.speak(msg, TextToSpeech.QUEUE_FLUSH, null, "goal_distance")
+        }
+    }
+
+    private fun checkGoalByDuration() {
+        val goal = goalDurationMs ?: return
+        if (goalReached || isPaused || isAutoPaused) return
+        val now = System.currentTimeMillis()
+        val elapsed = (now - startTimeMs - totalPausedMs).coerceAtLeast(0L)
+        if (elapsed >= goal) {
+            goalReached = true
+            val totalMin = (goal / 60_000L).toInt()
+            val msg = "Goal reached! $totalMin minute${if (totalMin == 1) "" else "s"} complete"
+            tts?.speak(msg, TextToSpeech.QUEUE_FLUSH, null, "goal_duration")
+        }
     }
 
     private fun flushPendingPoints() {
@@ -322,6 +419,7 @@ class TrackingService : LifecycleService() {
         lifecycleScope.launch {
             try {
                 repository.savePoints(routeId, toSave)
+                RydeWidget().updateAll(this@TrackingService)
             } catch (e: Exception) {
                 FileLogger.logError(this@TrackingService, "Failed to flush points for $routeId", e)
             }
@@ -347,7 +445,11 @@ class TrackingService : LifecycleService() {
             calories = TrackStats.estimatedCaloriesKcal(currentActivityType, dist, UserPrefs.getWeightKg(this@TrackingService)),
             points = pointBuffer.toList(),
             isPaused = isPaused || isAutoPaused,
-            isAutoPaused = isAutoPaused
+            isAutoPaused = isAutoPaused,
+            lapCount = lastAnnouncedKm,
+            goalDistanceKm = goalDistanceKm,
+            goalDurationMs = goalDurationMs,
+            goalReached = goalReached
         )
     }
 

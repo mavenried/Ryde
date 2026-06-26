@@ -4,6 +4,12 @@ import me.mavenried.Ryde.domain.model.ActivityType
 import me.mavenried.Ryde.domain.model.LocationPoint
 import kotlin.math.*
 
+data class LapSplit(
+    val lapNumber: Int,
+    val durationMs: Long,
+    val avgSpeedKmh: Double
+)
+
 object TrackStats {
 
     private const val EARTH_RADIUS_KM = 6371.0
@@ -72,6 +78,38 @@ object TrackStats {
             ActivityType.CYCLING -> KCAL_PER_KG_KM_CYCLING
         }
         return rate * weightKg * distanceKm
+    }
+
+    /**
+     * Computes per-km lap splits from raw GPS points.
+     * Each split covers exactly 1 km of cumulative distance (using haversine between filtered points).
+     */
+    fun computeLapSplits(points: List<LocationPoint>): List<LapSplit> {
+        val filtered = filterPoints(points)
+        if (filtered.size < 2) return emptyList()
+
+        val splits = mutableListOf<LapSplit>()
+        var lapStart = 0
+        var cumulativeKm = 0.0
+        var lapKm = 0.0
+
+        for (i in 1 until filtered.size) {
+            val seg = haversineKm(
+                filtered[i - 1].lat, filtered[i - 1].lng,
+                filtered[i].lat, filtered[i].lng
+            )
+            lapKm += seg
+            cumulativeKm += seg
+
+            if (lapKm >= 1.0) {
+                val lapDurationMs = filtered[i].timestamp - filtered[lapStart].timestamp
+                val speedKmh = if (lapDurationMs > 0) 1.0 / (lapDurationMs / 3_600_000.0) else 0.0
+                splits.add(LapSplit(splits.size + 1, lapDurationMs, speedKmh))
+                lapStart = i
+                lapKm = 0.0
+            }
+        }
+        return splits
     }
 
     private fun haversineKm(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {

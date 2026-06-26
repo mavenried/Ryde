@@ -18,6 +18,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import me.mavenried.Ryde.service.ActivityRecognitionReceiver
+import me.mavenried.Ryde.service.WeeklySummaryWorker
 import me.mavenried.Ryde.util.FileLogger
 import me.mavenried.Ryde.util.UserPrefs
 
@@ -29,6 +31,8 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
     val weightKg = remember { mutableStateOf(UserPrefs.getWeightKg(context)) }
     var theme by remember { mutableStateOf(UserPrefs.getTheme(context)) }
     var isMetric by remember { mutableStateOf(UserPrefs.isMetric(context)) }
+    var weeklySummaryEnabled by remember { mutableStateOf(UserPrefs.isWeeklyNotificationEnabled(context)) }
+    var autoStartEnabled by remember { mutableStateOf(UserPrefs.isAutoStartEnabled(context)) }
     var showLogsDialog by remember { mutableStateOf(false) }
 
     val displayValue = remember(useLbs.value, weightKg.value) {
@@ -166,6 +170,35 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
+            Text("Notifications", style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary)
+
+            NotificationToggleRow(
+                title = "Weekly summary",
+                subtitle = "Monday recap of last week's distance and activity count",
+                checked = weeklySummaryEnabled,
+                onCheckedChange = { enabled ->
+                    weeklySummaryEnabled = enabled
+                    UserPrefs.setWeeklyNotificationEnabled(context, enabled)
+                    if (enabled) WeeklySummaryWorker.schedule(context)
+                    else WeeklySummaryWorker.cancel(context)
+                }
+            )
+
+            NotificationToggleRow(
+                title = "Auto-start detection",
+                subtitle = "Notifies you when the phone detects walking, running, or cycling so you can tap to start a session",
+                checked = autoStartEnabled,
+                onCheckedChange = { enabled ->
+                    autoStartEnabled = enabled
+                    UserPrefs.setAutoStartEnabled(context, enabled)
+                    if (enabled) ActivityRecognitionReceiver.enable(context)
+                    else ActivityRecognitionReceiver.disable(context)
+                }
+            )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
             Text("Diagnostics", style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary)
 
@@ -235,6 +268,30 @@ private fun LogsDialog(onDismiss: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun NotificationToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 16.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

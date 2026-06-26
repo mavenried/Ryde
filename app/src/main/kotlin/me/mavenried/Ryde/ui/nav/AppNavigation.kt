@@ -6,6 +6,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import me.mavenried.Ryde.ui.screens.HeatmapScreen
 import me.mavenried.Ryde.ui.screens.HistoryScreen
 import me.mavenried.Ryde.ui.screens.HomeScreen
 import me.mavenried.Ryde.ui.screens.PersonalRecordsScreen
@@ -20,6 +21,7 @@ private object Routes {
     const val SETTINGS = "settings"
     const val PERSONAL_RECORDS = "personal_records"
     const val STATS = "stats"
+    const val HEATMAP = "heatmap"
     fun routeDetail(id: String) = "route/$id"
 }
 
@@ -38,7 +40,8 @@ fun AppNavigation() {
                 onNavigateBack = { nav.popBackStack() },
                 onRouteClick = { id -> nav.navigate(Routes.routeDetail(id)) },
                 onNavigateToPersonalRecords = { nav.navigate(Routes.PERSONAL_RECORDS) },
-                onNavigateToStats = { nav.navigate(Routes.STATS) }
+                onNavigateToStats = { nav.navigate(Routes.STATS) },
+                onNavigateToHeatmap = { nav.navigate(Routes.HEATMAP) }
             )
         }
         composable(
@@ -61,6 +64,9 @@ fun AppNavigation() {
         }
         composable(Routes.STATS) {
             StatsScreen(onNavigateBack = { nav.popBackStack() })
+        }
+        composable(Routes.HEATMAP) {
+            HeatmapScreen(onNavigateBack = { nav.popBackStack() })
         }
     }
 }
