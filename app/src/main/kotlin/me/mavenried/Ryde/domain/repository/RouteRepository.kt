@@ -79,12 +79,12 @@ class RouteRepository(private val db: AppDatabase) {
     private fun LocationPointEntity.toDomain() = LocationPoint(
         lat = lat, lng = lng, altitude = altitude,
         timestamp = timestamp, speed = speed, accuracy = accuracy,
-        bearing = bearing
+        bearing = bearing, heartRate = heartRate,
     )
 
     private fun LocationPoint.toEntity(routeId: String) = LocationPointEntity(
         routeId = routeId, lat = lat, lng = lng, altitude = altitude,
         timestamp = timestamp, speed = speed, accuracy = accuracy,
-        bearing = bearing
+        bearing = bearing, heartRate = heartRate,
     )
 }

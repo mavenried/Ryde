@@ -10,6 +10,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import me.mavenried.Ryde.data.db.AppDatabase
 import me.mavenried.Ryde.domain.model.ActivityType
+import me.mavenried.Ryde.domain.model.IntervalWorkout
 import me.mavenried.Ryde.domain.model.LocationPoint
 import me.mavenried.Ryde.domain.model.Route
 import me.mavenried.Ryde.domain.repository.RouteRepository
@@ -90,11 +91,12 @@ class TrackingViewModel(app: Application) : AndroidViewModel(app) {
     fun startTracking(
         activityType: ActivityType,
         goalDistanceKm: Double? = null,
-        goalDurationMs: Long? = null
+        goalDurationMs: Long? = null,
+        intervalWorkout: IntervalWorkout? = null,
     ) {
         val ctx = getApplication<Application>()
         ctx.startForegroundService(Intent(ctx, TrackingService::class.java))
-        trackingService?.startTracking(activityType, goalDistanceKm, goalDurationMs)
+        trackingService?.startTracking(activityType, goalDistanceKm, goalDurationMs, intervalWorkout)
     }
 
     fun resumeCrashedTracking() {

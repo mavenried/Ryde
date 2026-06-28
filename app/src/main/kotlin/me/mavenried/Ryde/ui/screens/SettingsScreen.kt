@@ -1,11 +1,14 @@
 package me.mavenried.Ryde.ui.screens
 
+import android.annotation.SuppressLint
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.BluetoothSearching
+import androidx.compose.material.icons.rounded.Bluetooth
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material3.*
@@ -19,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import me.mavenried.Ryde.service.ActivityRecognitionReceiver
+import me.mavenried.Ryde.service.HeartRateManager
 import me.mavenried.Ryde.service.WeeklySummaryWorker
 import me.mavenried.Ryde.util.FileLogger
 import me.mavenried.Ryde.util.UserPrefs
@@ -36,6 +40,10 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
     var weeklySummaryEnabled by remember { mutableStateOf(UserPrefs.isWeeklyNotificationEnabled(context)) }
     var autoStartEnabled by remember { mutableStateOf(UserPrefs.isAutoStartEnabled(context)) }
     var showLogsDialog by remember { mutableStateOf(false) }
+    var hrDeviceName by remember { mutableStateOf(UserPrefs.getHrDeviceName(context)) }
+    var showHrScanDialog by remember { mutableStateOf(false) }
+    val hrScanResults by HeartRateManager.scanResults.collectAsState()
+    val hrConnected by HeartRateManager.connected.collectAsState()
 
     val displayValue = remember(useLbs.value, weightKg.value) {
         if (useLbs.value) "%.1f".format(UserPrefs.kgToLbs(weightKg.value))
@@ -46,6 +54,23 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
 
     if (showLogsDialog) {
         LogsDialog(onDismiss = { showLogsDialog = false })
+    }
+    if (showHrScanDialog) {
+        HrScanDialog(
+            devices = hrScanResults,
+            onDeviceSelected = { device ->
+                @Suppress("MissingPermission")
+                val name = device.name ?: device.address
+                UserPrefs.setHrDevice(context, device.address, name)
+                hrDeviceName = name
+                HeartRateManager.stopScan()
+                showHrScanDialog = false
+            },
+            onDismiss = {
+                HeartRateManager.stopScan()
+                showHrScanDialog = false
+            }
+        )
     }
 
     fun save() {
@@ -215,6 +240,60 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
+            Text("Heart Rate Monitor", style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary)
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (hrDeviceName != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (hrConnected) Icons.Rounded.Bluetooth else Icons.AutoMirrored.Rounded.BluetoothSearching,
+                            contentDescription = null,
+                            tint = if (hrConnected) MaterialTheme.colorScheme.primary
+                                   else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(hrDeviceName!!, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                if (hrConnected) "Connected" else "Not connected",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                            )
+                        }
+                        TextButton(onClick = {
+                            UserPrefs.setHrDevice(context, null, null)
+                            hrDeviceName = null
+                            HeartRateManager.disconnect()
+                        }) { Text("Forget") }
+                    }
+                } else {
+                    Text(
+                        "No device paired. Tap Scan to find nearby BLE heart rate monitors.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                    )
+                }
+                OutlinedButton(
+                    onClick = {
+                        HeartRateManager.startScan(context)
+                        showHrScanDialog = true
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(16.dp)
+                ) {
+                    Icon(Icons.AutoMirrored.Rounded.BluetoothSearching, contentDescription = null)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Scan for devices")
+                }
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
             Text("Diagnostics", style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary)
 
@@ -229,6 +308,48 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
             }
         }
     }
+}
+
+@SuppressLint("MissingPermission")
+@Composable
+private fun HrScanDialog(
+    devices: List<android.bluetooth.BluetoothDevice>,
+    onDeviceSelected: (android.bluetooth.BluetoothDevice) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select heart rate monitor") },
+        text = {
+            if (devices.isEmpty()) {
+                Text("Scanning for nearby devices…", style = MaterialTheme.typography.bodyMedium)
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    devices.forEach { device ->
+                        TextButton(
+                            onClick = { onDeviceSelected(device) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.Start
+                            ) {
+                                Text(device.name ?: "Unknown device",
+                                    style = MaterialTheme.typography.bodyMedium)
+                                Text(device.address,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 @Composable

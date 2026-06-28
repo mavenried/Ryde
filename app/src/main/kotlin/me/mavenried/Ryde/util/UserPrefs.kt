@@ -16,6 +16,8 @@ object UserPrefs {
     private const val KEY_AUTO_START = "auto_start"
     private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
     private const val KEY_LIGHT_MODE_RIDING = "light_mode_riding"
+    private const val KEY_HR_DEVICE_MAC = "hr_device_mac"
+    private const val KEY_HR_DEVICE_NAME = "hr_device_name"
 
     private val _themeFlow = MutableStateFlow("system")
     val themeFlow: StateFlow<String> = _themeFlow.asStateFlow()
@@ -106,6 +108,20 @@ object UserPrefs {
     fun setLightModeRiding(context: Context, enabled: Boolean) =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_LIGHT_MODE_RIDING, enabled).apply()
+
+    fun getHrDeviceMac(context: Context): String? =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_HR_DEVICE_MAC, null)
+
+    fun getHrDeviceName(context: Context): String? =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_HR_DEVICE_NAME, null)
+
+    fun setHrDevice(context: Context, mac: String?, name: String?) =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString(KEY_HR_DEVICE_MAC, mac)
+            .putString(KEY_HR_DEVICE_NAME, name)
+            .apply()
 
     fun kgToLbs(kg: Double) = kg * 2.20462
     fun lbsToKg(lbs: Double) = lbs / 2.20462

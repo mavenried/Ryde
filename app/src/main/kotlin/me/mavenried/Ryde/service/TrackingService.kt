@@ -11,13 +11,16 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.location.*
 import me.mavenried.Ryde.data.db.AppDatabase
 import me.mavenried.Ryde.domain.model.ActivityType
+import me.mavenried.Ryde.domain.model.IntervalWorkout
 import me.mavenried.Ryde.domain.model.LocationPoint
 import me.mavenried.Ryde.domain.model.Route
+import me.mavenried.Ryde.domain.model.StepType
 import me.mavenried.Ryde.domain.repository.RouteRepository
 import me.mavenried.Ryde.domain.util.TrackStats
 import me.mavenried.Ryde.util.FileLogger
 import me.mavenried.Ryde.util.ReverseGeocoder
 import me.mavenried.Ryde.util.UserPrefs
+import me.mavenried.Ryde.service.HeartRateManager
 import me.mavenried.Ryde.widget.RydeWidget
 import androidx.glance.appwidget.updateAll
 import kotlinx.coroutines.Job
@@ -45,7 +48,12 @@ sealed class TrackingState {
         val lapCount: Int = 0,
         val goalDistanceKm: Double? = null,
         val goalDurationMs: Long? = null,
-        val goalReached: Boolean = false
+        val goalReached: Boolean = false,
+        val currentHeartRate: Int? = null,
+        val intervalStepType: StepType? = null,
+        val intervalStepRemainingSec: Int = 0,
+        val intervalStepNumber: Int = 0,
+        val intervalTotalSteps: Int = 0,
     ) : TrackingState()
 }
 
@@ -90,6 +98,11 @@ class TrackingService : LifecycleService() {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
 
+    // Interval workout
+    private var intervalWorkout: IntervalWorkout? = null
+    private var intervalStepIndex = 0
+    private var intervalStepRemainingMs = 0L
+
     override fun onCreate() {
         super.onCreate()
         fusedClient = LocationServices.getFusedLocationProviderClient(this)
@@ -129,7 +142,8 @@ class TrackingService : LifecycleService() {
     fun startTracking(
         activityType: ActivityType,
         goalDistanceKm: Double? = null,
-        goalDurationMs: Long? = null
+        goalDurationMs: Long? = null,
+        intervalWorkout: IntervalWorkout? = null,
     ) {
         FileLogger.log(this, "Starting tracking for $activityType")
         currentActivityType = activityType
@@ -145,6 +159,11 @@ class TrackingService : LifecycleService() {
         this.goalDurationMs = goalDurationMs
         goalReached = false
         lastAnnouncedKm = 0
+        this.intervalWorkout = intervalWorkout
+        intervalStepIndex = 0
+        intervalStepRemainingMs = intervalWorkout?.workMs ?: 0L
+        val hrMac = UserPrefs.getHrDeviceMac(this)
+        if (hrMac != null) HeartRateManager.connect(this, hrMac)
 
         val initialRoute = Route(
             id = currentRouteId,
@@ -230,6 +249,7 @@ class TrackingService : LifecycleService() {
     }
 
     fun discardTracking() {
+        HeartRateManager.disconnect()
         fusedClient.removeLocationUpdates(locationCallback)
         stopTimer()
         val routeId = currentRouteId
@@ -241,6 +261,7 @@ class TrackingService : LifecycleService() {
 
     fun stopTracking(tag: String = "Other") {
         FileLogger.log(this, "Stopping tracking for $currentRouteId")
+        HeartRateManager.disconnect()
         fusedClient.removeLocationUpdates(locationCallback)
         stopTimer()
         val endTime = System.currentTimeMillis()
@@ -297,10 +318,27 @@ class TrackingService : LifecycleService() {
         timerJob = lifecycleScope.launch {
             while (true) {
                 delay(1_000L)
+                tickInterval()
                 pushState()
                 checkGoalByDuration()
             }
         }
+    }
+
+    private fun tickInterval() {
+        val workout = intervalWorkout ?: return
+        if (isPaused || isAutoPaused) return
+        intervalStepRemainingMs -= 1_000L
+        if (intervalStepRemainingMs > 0) return
+        intervalStepIndex++
+        if (intervalStepIndex >= workout.totalSteps) {
+            tts?.speak("Workout complete", TextToSpeech.QUEUE_FLUSH, null, "interval_done")
+            intervalWorkout = null
+            return
+        }
+        intervalStepRemainingMs = workout.stepDurationMs(intervalStepIndex)
+        val msg = if (workout.stepType(intervalStepIndex) == StepType.WORK) "Work" else "Rest"
+        tts?.speak(msg, TextToSpeech.QUEUE_FLUSH, null, "interval_$intervalStepIndex")
     }
 
     private fun stopTimer() {
@@ -338,7 +376,8 @@ class TrackingService : LifecycleService() {
             timestamp = location.time,
             speed = location.speed,
             accuracy = location.accuracy,
-            bearing = if (location.hasBearing()) location.bearing else 0f
+            bearing = if (location.hasBearing()) location.bearing else 0f,
+            heartRate = HeartRateManager.heartRate.value,
         )
 
         if (point.accuracy <= 25f) {
@@ -457,6 +496,7 @@ class TrackingService : LifecycleService() {
         }).coerceAtLeast(0L)
         val dist = TrackStats.totalDistanceKm(pointBuffer)
         val liveSpeedKmh = lastSpeedMs * 3.6
+        val workout = intervalWorkout
         setState(TrackingState.Active(
             activityType = currentActivityType,
             elapsedMs = elapsed,
@@ -471,7 +511,12 @@ class TrackingService : LifecycleService() {
             lapCount = lastAnnouncedKm,
             goalDistanceKm = goalDistanceKm,
             goalDurationMs = goalDurationMs,
-            goalReached = goalReached
+            goalReached = goalReached,
+            currentHeartRate = HeartRateManager.heartRate.value,
+            intervalStepType = workout?.stepType(intervalStepIndex),
+            intervalStepRemainingSec = (intervalStepRemainingMs / 1_000L).toInt().coerceAtLeast(0),
+            intervalStepNumber = if (workout != null) intervalStepIndex + 1 else 0,
+            intervalTotalSteps = workout?.totalSteps ?: 0,
         ))
     }
 

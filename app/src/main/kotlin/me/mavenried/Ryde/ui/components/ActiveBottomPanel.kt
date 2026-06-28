@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import me.mavenried.Ryde.domain.model.ActivityType
+import me.mavenried.Ryde.domain.model.StepType
 import me.mavenried.Ryde.service.MediaListenerService
 import me.mavenried.Ryde.service.TrackingState
 import me.mavenried.Ryde.ui.theme.LocalIsMetric
@@ -154,6 +155,56 @@ fun ActiveBottomPanel(
                         color = if (state.goalReached) MaterialTheme.colorScheme.primary
                                 else MaterialTheme.colorScheme.tertiary
                     )
+                }
+            }
+
+            // HR chip + interval banner row
+            val showHr = state.currentHeartRate != null
+            val showInterval = state.intervalStepType != null
+            if (showHr || showInterval) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (showHr) {
+                        SuggestionChip(
+                            onClick = {},
+                            label = { Text("${state.currentHeartRate} bpm") },
+                            icon = {
+                                Icon(
+                                    Icons.Rounded.Favorite,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        )
+                    }
+                    if (showInterval) {
+                        val stepType = state.intervalStepType!!
+                        val mins = state.intervalStepRemainingSec / 60
+                        val secs = state.intervalStepRemainingSec % 60
+                        val timeLeft = if (mins > 0) "$mins:%02d".format(secs) else "$secs s"
+                        val chipColors = if (stepType == StepType.WORK)
+                            SuggestionChipDefaults.suggestionChipColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                        else
+                            SuggestionChipDefaults.suggestionChipColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer
+                            )
+                        SuggestionChip(
+                            onClick = {},
+                            label = {
+                                Text("${if (stepType == StepType.WORK) "Work" else "Rest"} · $timeLeft")
+                            },
+                            colors = chipColors
+                        )
+                    }
                 }
             }
 

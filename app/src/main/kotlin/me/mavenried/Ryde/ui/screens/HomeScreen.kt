@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.Loop
 import androidx.compose.material.icons.rounded.SportsScore
 import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Navigation
@@ -34,6 +35,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import android.location.Geocoder
 import androidx.compose.material3.FilterChip
 import me.mavenried.Ryde.domain.model.ActivityType
+import me.mavenried.Ryde.domain.model.IntervalWorkout
 import me.mavenried.Ryde.service.TrackingState
 import me.mavenried.Ryde.ui.components.*
 import me.mavenried.Ryde.ui.viewmodel.DestinationPoint
@@ -66,6 +68,7 @@ fun HomeScreen(
     var showOverlaySelector by remember { mutableStateOf(false) }
     var goalDistanceKm by remember { mutableStateOf<Double?>(null) }
     var goalDurationMs by remember { mutableStateOf<Long?>(null) }
+    var intervalWorkout by remember { mutableStateOf<IntervalWorkout?>(null) }
     val context = LocalContext.current
 
     LaunchedEffect(Unit) {
@@ -170,7 +173,7 @@ fun HomeScreen(
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
                     !PermissionHelper.hasBackgroundLocationPermission(context) ->
                 bgLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-            else -> vm.startTracking(selectedActivity, goalDistanceKm, goalDurationMs)
+            else -> vm.startTracking(selectedActivity, goalDistanceKm, goalDurationMs, intervalWorkout)
         }
     }
 
@@ -186,7 +189,9 @@ fun HomeScreen(
             hasOverlay = overlayPoints.isNotEmpty(),
             goalDistanceKm = goalDistanceKm,
             goalDurationMs = goalDurationMs,
-            onGoalChange = { dist, dur -> goalDistanceKm = dist; goalDurationMs = dur }
+            onGoalChange = { dist, dur -> goalDistanceKm = dist; goalDurationMs = dur },
+            intervalWorkout = intervalWorkout,
+            onIntervalChange = { intervalWorkout = it },
         )
         is TrackingState.Active -> ActiveContent(
             state = s,
@@ -241,6 +246,7 @@ fun HomeScreen(
                     showStopDialog = false
                     goalDistanceKm = null
                     goalDurationMs = null
+                    intervalWorkout = null
                     vm.stopTracking(selectedTag)
                 }) { Text(if (isShort) "Save anyway" else "Save") }
             },
@@ -250,6 +256,7 @@ fun HomeScreen(
                         showStopDialog = false
                         goalDistanceKm = null
                         goalDurationMs = null
+                        intervalWorkout = null
                         vm.discardTracking()
                     }) {
                         Text(
@@ -351,9 +358,12 @@ private fun IdleContent(
     hasOverlay: Boolean,
     goalDistanceKm: Double?,
     goalDurationMs: Long?,
-    onGoalChange: (Double?, Long?) -> Unit
+    onGoalChange: (Double?, Long?) -> Unit,
+    intervalWorkout: IntervalWorkout?,
+    onIntervalChange: (IntervalWorkout?) -> Unit,
 ) {
     var showGoalDialog by remember { mutableStateOf(false) }
+    var showIntervalDialog by remember { mutableStateOf(false) }
     var goalMode by remember { mutableStateOf(if (goalDurationMs != null) "time" else "distance") }
     var goalDistText by remember { mutableStateOf(goalDistanceKm?.let { "%.1f".format(it) } ?: "") }
     var goalMinText by remember { mutableStateOf(goalDurationMs?.let { (it / 60_000L).toString() } ?: "") }
@@ -442,6 +452,13 @@ private fun IdleContent(
                     ActivityPicker(selected = selected, onSelect = onSelect)
                     Spacer(modifier = Modifier.height(12.dp))
 
+                    if (showIntervalDialog) {
+                        IntervalDialog(
+                            current = intervalWorkout,
+                            onConfirm = { onIntervalChange(it); showIntervalDialog = false },
+                            onDismiss = { showIntervalDialog = false }
+                        )
+                    }
                     if (showGoalDialog) {
                         GoalDialog(
                             goalMode = goalMode,
@@ -487,6 +504,16 @@ private fun IdleContent(
                                     else -> "${goalDurationMs!! / 60_000L} min"
                                 }
                                 Text(label, style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
+                        Button(
+                            onClick = { showIntervalDialog = true },
+                            contentPadding = PaddingValues(vertical = 14.dp, horizontal = 16.dp)
+                        ) {
+                            Icon(Icons.Rounded.Loop, contentDescription = "Intervals", modifier = Modifier.size(18.dp))
+                            if (intervalWorkout != null) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("${intervalWorkout.repeat}×", style = MaterialTheme.typography.labelLarge)
                             }
                         }
                         Button(
@@ -736,6 +763,65 @@ private fun ActiveContent(
                 .onSizeChanged { panelHeightPx = it.height }
         )
     }
+}
+
+@Composable
+private fun IntervalDialog(
+    current: IntervalWorkout?,
+    onConfirm: (IntervalWorkout?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var workText by remember { mutableStateOf(current?.let { (it.workMs / 1_000L).toString() } ?: "60") }
+    var restText by remember { mutableStateOf(current?.let { (it.restMs / 1_000L).toString() } ?: "30") }
+    var repeatText by remember { mutableStateOf(current?.repeat?.toString() ?: "8") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Interval workout") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = workText,
+                    onValueChange = { workText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Work (seconds)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = restText,
+                    onValueChange = { restText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Rest (seconds)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = repeatText,
+                    onValueChange = { repeatText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Repeat") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val work = workText.toLongOrNull()?.takeIf { it > 0 }?.times(1_000L)
+                val rest = restText.toLongOrNull()?.takeIf { it > 0 }?.times(1_000L)
+                val repeat = repeatText.toIntOrNull()?.takeIf { it > 0 }
+                if (work != null && rest != null && repeat != null) {
+                    onConfirm(IntervalWorkout(work, rest, repeat))
+                } else {
+                    onDismiss()
+                }
+            }) { Text("Set") }
+        },
+        dismissButton = {
+            TextButton(onClick = { onConfirm(null) }) { Text("Clear") }
+        }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

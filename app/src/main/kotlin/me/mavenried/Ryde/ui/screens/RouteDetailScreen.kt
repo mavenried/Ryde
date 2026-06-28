@@ -35,6 +35,7 @@ import me.mavenried.Ryde.ui.components.SpeedChart
 import me.mavenried.Ryde.ui.theme.LocalIsMetric
 import me.mavenried.Ryde.ui.viewmodel.ROUTE_TAGS
 import me.mavenried.Ryde.ui.viewmodel.RouteDetailViewModel
+import me.mavenried.Ryde.util.FitExporter
 import me.mavenried.Ryde.util.GpxExporter
 import me.mavenried.Ryde.util.ShareCardRenderer
 import me.mavenried.Ryde.util.UserPrefs
@@ -70,6 +71,21 @@ fun RouteDetailScreen(
                 Toast.makeText(context, "Exported successfully", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(context, "Export failed", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val fitExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        uri?.let {
+            val r = route ?: return@let
+            val p = points
+            scope.launch {
+                val ok = withContext(Dispatchers.IO) { FitExporter.exportToUri(context, it, r, p) }
+                Toast.makeText(context,
+                    if (ok) "FIT exported" else "FIT export failed",
+                    Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -192,6 +208,14 @@ fun RouteDetailScreen(
                                     showShareMenu = false
                                     val name = route?.name?.replace(" ", "_") ?: "route"
                                     exportLauncher.launch("Ryde_$name.gpx")
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Export FIT") },
+                                onClick = {
+                                    showShareMenu = false
+                                    val name = route?.name?.replace(" ", "_") ?: "route"
+                                    fitExportLauncher.launch("Ryde_$name.fit")
                                 }
                             )
                             DropdownMenuItem(
