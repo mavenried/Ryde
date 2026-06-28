@@ -27,27 +27,44 @@ android {
         manifestPlaceholders["MAPS_API_KEY"] = localProps.getProperty("MAPS_API_KEY", "")
     }
 
-    val keystorePath = System.getenv("KEYSTORE_PATH")
-    val keystorePass = System.getenv("KEYSTORE_PASS")
-    val keyAlias = System.getenv("KEY_ALIAS")
-    val keyPass = System.getenv("KEY_PASS")
-    val hasSigningEnv = keystorePath != null && keystorePass != null && keyAlias != null
+    val ciKeystorePath = System.getenv("KEYSTORE_PATH")
+    val ciKeystorePass = System.getenv("KEYSTORE_PASS")
+    val ciKeyAlias = System.getenv("KEY_ALIAS")
 
-    if (hasSigningEnv) {
+    // Local keystore — credentials read from local.properties (gitignored)
+    val localKeystore = rootProject.file("ryde-release.jks")
+    val localKeystorePass = localProps.getProperty("KEYSTORE_PASS")
+    val localKeyAlias = localProps.getProperty("KEY_ALIAS") ?: "ryde"
+
+    val sharedStore = when {
+        ciKeystorePath != null -> file(ciKeystorePath)
+        localKeystore.exists() && localKeystorePass != null -> localKeystore
+        else -> null
+    }
+    val sharedPass = ciKeystorePass ?: localKeystorePass
+    val sharedAlias = ciKeyAlias ?: localKeyAlias
+
+    if (sharedStore != null && sharedPass != null) {
         signingConfigs {
-            create("release") {
-                storeFile = file(keystorePath!!)
-                storePassword = keystorePass
-                this.keyAlias = keyAlias
-                keyPassword = keyPass ?: keystorePass
+            create("shared") {
+                storeFile = sharedStore
+                storePassword = sharedPass
+                keyAlias = sharedAlias
+                keyPassword = sharedPass
+            }
+            getByName("debug") {
+                storeFile = sharedStore
+                storePassword = sharedPass
+                keyAlias = sharedAlias
+                keyPassword = sharedPass
             }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = if (hasSigningEnv)
-                signingConfigs.getByName("release")
+            signingConfig = if (signingConfigs.findByName("shared") != null)
+                signingConfigs.getByName("shared")
             else
                 signingConfigs.getByName("debug")
             isMinifyEnabled = false
