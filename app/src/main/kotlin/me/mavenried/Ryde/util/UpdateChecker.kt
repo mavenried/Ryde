@@ -21,7 +21,7 @@ object UpdateChecker {
     // Result.failure if network/parse error.
     suspend fun checkForUpdate(): Result<UpdateInfo?> = withContext(Dispatchers.IO) {
         runCatching {
-            val conn = URL("https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/latest")
+            val conn = URL("https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases?per_page=1")
                 .openConnection() as HttpURLConnection
             conn.connectTimeout = 5_000
             conn.readTimeout = 10_000
@@ -29,7 +29,9 @@ object UpdateChecker {
             val code = conn.responseCode
             check(code == 200) { "HTTP $code" }
 
-            val json = JSONObject(conn.inputStream.bufferedReader().readText())
+            val arr = org.json.JSONArray(conn.inputStream.bufferedReader().readText())
+            check(arr.length() > 0) { "No releases" }
+            val json = arr.getJSONObject(0)
             val tag = json.getString("tag_name").trimStart('v')
             val notes = json.optString("body", "").trim()
             val assets = json.getJSONArray("assets")
