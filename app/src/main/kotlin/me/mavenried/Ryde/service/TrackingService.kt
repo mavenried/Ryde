@@ -63,6 +63,11 @@ class TrackingService : LifecycleService() {
     private val _state = MutableStateFlow<TrackingState>(TrackingState.Idle)
     val state: StateFlow<TrackingState> = _state.asStateFlow()
 
+    companion object {
+        private val _globalState = MutableStateFlow<TrackingState>(TrackingState.Idle)
+        val globalState: StateFlow<TrackingState> = _globalState.asStateFlow()
+    }
+
     private var startTimeMs = 0L
     private var totalPausedMs = 0L
     private var pausedAtMs = 0L
@@ -96,7 +101,8 @@ class TrackingService : LifecycleService() {
         }
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.getDefault()
+                tts?.language = Locale.US
+                tts?.setSpeechRate(0.95f)
                 ttsReady = true
             }
         }
@@ -228,7 +234,7 @@ class TrackingService : LifecycleService() {
         stopTimer()
         val routeId = currentRouteId
         lifecycleScope.launch { repository.deleteRoute(routeId) }
-        _state.value = TrackingState.Idle
+        setState(TrackingState.Idle)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -281,7 +287,7 @@ class TrackingService : LifecycleService() {
             RydeWidget().updateAll(this@TrackingService)
         }
 
-        _state.value = TrackingState.Idle
+        setState(TrackingState.Idle)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -355,10 +361,11 @@ class TrackingService : LifecycleService() {
                 if (pendingDbPoints.size >= 10) flushPendingPoints()
 
                 val totalKm = TrackStats.totalDistanceKm(pointBuffer)
-                val completedKm = totalKm.toInt()
-                if (completedKm > lastAnnouncedKm) {
-                    lastAnnouncedKm = completedKm
-                    announceKmSplit(completedKm, totalKm)
+                val isMetric = UserPrefs.isMetric(this)
+                val completedUnits = if (isMetric) totalKm.toInt() else UserPrefs.kmToMi(totalKm).toInt()
+                if (completedUnits > lastAnnouncedKm) {
+                    lastAnnouncedKm = completedUnits
+                    announceSplit(completedUnits, totalKm, isMetric)
                 }
                 checkGoalByDistance(totalKm)
             }
@@ -369,7 +376,7 @@ class TrackingService : LifecycleService() {
         updateNotification()
     }
 
-    private fun announceKmSplit(lapNumber: Int, totalKm: Double) {
+    private fun announceSplit(lapNumber: Int, totalKm: Double, isMetric: Boolean) {
         if (!ttsReady) return
         val recentPoints = pointBuffer.takeLast(20)
         val recentDurationMs = if (recentPoints.size >= 2)
@@ -378,13 +385,19 @@ class TrackingService : LifecycleService() {
 
         val lapStr = if (currentActivityType == ActivityType.CYCLING) {
             val speedKmh = if (recentDurationMs > 0) recentDistKm / (recentDurationMs / 3_600_000.0) else 0.0
-            "$lapNumber kilometer. Speed: %.0f kilometers per hour".format(speedKmh)
+            if (isMetric) {
+                "$lapNumber kilometer, averaging %.0f kilometers per hour".format(speedKmh)
+            } else {
+                "$lapNumber mile, averaging %.0f miles per hour".format(UserPrefs.kmhToMph(speedKmh))
+            }
         } else {
             val pace = if (recentDistKm > 0 && recentDurationMs > 0)
                 (recentDurationMs / 60_000.0) / recentDistKm else 0.0
-            val paceMin = pace.toInt()
-            val paceSec = ((pace - paceMin) * 60).toInt()
-            "$lapNumber kilometer. Pace: $paceMin minutes $paceSec seconds per kilometer"
+            val displayPace = if (isMetric) pace else UserPrefs.minPerKmToMinPerMi(pace)
+            val paceMin = displayPace.toInt()
+            val paceSec = ((displayPace - paceMin) * 60).toInt().coerceIn(0, 59)
+            val unit = if (isMetric) "kilometer" else "mile"
+            "$lapNumber $unit at a pace of $paceMin ${if (paceSec == 0) "minutes" else "minutes and $paceSec seconds"} per $unit"
         }
         tts?.speak(lapStr, TextToSpeech.QUEUE_FLUSH, null, "lap_$lapNumber")
     }
@@ -393,7 +406,11 @@ class TrackingService : LifecycleService() {
         val goal = goalDistanceKm ?: return
         if (!goalReached && totalKm >= goal) {
             goalReached = true
-            val msg = "Goal reached! %.1f kilometers complete".format(goal)
+            val msg = if (UserPrefs.isMetric(this)) {
+                "Goal reached! You've completed %.1f kilometers".format(goal)
+            } else {
+                "Goal reached! You've completed %.1f miles".format(UserPrefs.kmToMi(goal))
+            }
             tts?.speak(msg, TextToSpeech.QUEUE_FLUSH, null, "goal_distance")
         }
     }
@@ -406,7 +423,7 @@ class TrackingService : LifecycleService() {
         if (elapsed >= goal) {
             goalReached = true
             val totalMin = (goal / 60_000L).toInt()
-            val msg = "Goal reached! $totalMin minute${if (totalMin == 1) "" else "s"} complete"
+            val msg = "Goal reached! You've been riding for $totalMin minute${if (totalMin == 1) "" else "s"}"
             tts?.speak(msg, TextToSpeech.QUEUE_FLUSH, null, "goal_duration")
         }
     }
@@ -426,6 +443,11 @@ class TrackingService : LifecycleService() {
         }
     }
 
+    private fun setState(s: TrackingState) {
+        _state.value = s
+        _globalState.value = s
+    }
+
     private fun pushState() {
         val now = System.currentTimeMillis()
         val elapsed = (if (isPaused || isAutoPaused) {
@@ -435,7 +457,7 @@ class TrackingService : LifecycleService() {
         }).coerceAtLeast(0L)
         val dist = TrackStats.totalDistanceKm(pointBuffer)
         val liveSpeedKmh = lastSpeedMs * 3.6
-        _state.value = TrackingState.Active(
+        setState(TrackingState.Active(
             activityType = currentActivityType,
             elapsedMs = elapsed,
             distanceKm = dist,
@@ -450,7 +472,7 @@ class TrackingService : LifecycleService() {
             goalDistanceKm = goalDistanceKm,
             goalDurationMs = goalDurationMs,
             goalReached = goalReached
-        )
+        ))
     }
 
     private fun updateNotification() {

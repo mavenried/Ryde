@@ -14,6 +14,8 @@ object UserPrefs {
     private const val KEY_USE_METRIC = "use_metric"
     private const val KEY_WEEKLY_NOTIFICATION = "weekly_notification"
     private const val KEY_AUTO_START = "auto_start"
+    private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
+    private const val KEY_LIGHT_MODE_RIDING = "light_mode_riding"
 
     private val _themeFlow = MutableStateFlow("system")
     val themeFlow: StateFlow<String> = _themeFlow.asStateFlow()
@@ -88,6 +90,22 @@ object UserPrefs {
     fun setAutoStartEnabled(context: Context, enabled: Boolean) =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_AUTO_START, enabled).apply()
+
+    fun isKeepScreenOn(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_KEEP_SCREEN_ON, true)
+
+    fun setKeepScreenOn(context: Context, enabled: Boolean) =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_KEEP_SCREEN_ON, enabled).apply()
+
+    fun isLightModeRiding(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_LIGHT_MODE_RIDING, false)
+
+    fun setLightModeRiding(context: Context, enabled: Boolean) =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_LIGHT_MODE_RIDING, enabled).apply()
 
     fun kgToLbs(kg: Double) = kg * 2.20462
     fun lbsToKg(lbs: Double) = lbs / 2.20462

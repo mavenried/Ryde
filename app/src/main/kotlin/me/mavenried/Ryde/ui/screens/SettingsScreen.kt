@@ -31,6 +31,8 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
     val weightKg = remember { mutableStateOf(UserPrefs.getWeightKg(context)) }
     var theme by remember { mutableStateOf(UserPrefs.getTheme(context)) }
     var isMetric by remember { mutableStateOf(UserPrefs.isMetric(context)) }
+    var keepScreenOn by remember { mutableStateOf(UserPrefs.isKeepScreenOn(context)) }
+    var lightModeRiding by remember { mutableStateOf(UserPrefs.isLightModeRiding(context)) }
     var weeklySummaryEnabled by remember { mutableStateOf(UserPrefs.isWeeklyNotificationEnabled(context)) }
     var autoStartEnabled by remember { mutableStateOf(UserPrefs.isAutoStartEnabled(context)) }
     var showLogsDialog by remember { mutableStateOf(false) }
@@ -167,6 +169,20 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
                         }
                 }
             }
+
+            NotificationToggleRow(
+                title = "Keep screen on while riding",
+                subtitle = "Prevents the screen from sleeping during an active session",
+                checked = keepScreenOn,
+                onCheckedChange = { keepScreenOn = it; UserPrefs.setKeepScreenOn(context, it) }
+            )
+
+            NotificationToggleRow(
+                title = "Light mode while riding",
+                subtitle = "Switches to light theme during an active session for outdoor visibility",
+                checked = lightModeRiding,
+                onCheckedChange = { lightModeRiding = it; UserPrefs.setLightModeRiding(context, it) }
+            )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 

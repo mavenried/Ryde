@@ -3,6 +3,7 @@ package me.mavenried.Ryde.ui
 import android.Manifest
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -11,11 +12,25 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.launch
+import me.mavenried.Ryde.service.TrackingService
+import me.mavenried.Ryde.service.TrackingState
+import me.mavenried.Ryde.ui.components.UpdateDialog
 import me.mavenried.Ryde.ui.nav.AppNavigation
 import me.mavenried.Ryde.ui.theme.RydeTheme
+import me.mavenried.Ryde.util.UpdateChecker
+import me.mavenried.Ryde.util.UpdateInfo
+import me.mavenried.Ryde.util.UpdateInstaller
 import me.mavenried.Ryde.util.UserPrefs
 
 class MainActivity : ComponentActivity() {
@@ -31,20 +46,63 @@ class MainActivity : ComponentActivity() {
         UserPrefs.initMetric(this)
         requestInitialPermissions()
         setContent {
+            val scope = rememberCoroutineScope()
+            var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+            var downloadProgress by remember { mutableFloatStateOf(-1f) }
+            var downloadReady by remember { mutableStateOf(false) }
+
+            LaunchedEffect(Unit) { updateInfo = UpdateChecker.checkForUpdate() }
+
             val theme by UserPrefs.themeFlow.collectAsState()
             val isMetric by UserPrefs.metricsFlow.collectAsState()
+            val trackingState by TrackingService.globalState.collectAsState()
+            val isRiding = trackingState is TrackingState.Active
+
+            DisposableEffect(isRiding) {
+                if (isRiding && UserPrefs.isKeepScreenOn(this@MainActivity)) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+                onDispose {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+            }
+
             val systemDark = isSystemInDarkTheme()
-            val darkTheme = when (theme) {
-                "dark" -> true
-                "light" -> false
+            val darkTheme = when {
+                isRiding && UserPrefs.isLightModeRiding(this@MainActivity) -> false
+                theme == "dark" -> true
+                theme == "light" -> false
                 else -> systemDark
             }
+
             RydeTheme(darkTheme = darkTheme, isMetric = isMetric) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
                     AppNavigation()
+
+                    updateInfo?.let { info ->
+                        UpdateDialog(
+                            info = info,
+                            downloading = downloadProgress >= 0f && !downloadReady,
+                            downloadProgress = downloadProgress.coerceAtLeast(0f),
+                            readyToInstall = downloadReady,
+                            onDownload = {
+                                downloadProgress = 0f
+                                scope.launch {
+                                    UpdateInstaller.download(this@MainActivity, info.apkUrl) { p ->
+                                        downloadProgress = p
+                                    }
+                                    downloadReady = true
+                                }
+                            },
+                            onInstall = { UpdateInstaller.install(this@MainActivity) },
+                            onDismiss = { updateInfo = null },
+                        )
+                    }
                 }
             }
         }

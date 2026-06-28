@@ -16,12 +16,14 @@ android {
     namespace = "me.mavenried.Ryde"
     compileSdk = 35
 
+    val runNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+
     defaultConfig {
         applicationId = "me.mavenried.Ryde"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = runNumber ?: 1
+        versionName = if (runNumber != null) "1.0.$runNumber" else "1.0"
         manifestPlaceholders["MAPS_API_KEY"] = localProps.getProperty("MAPS_API_KEY", "")
     }
 
@@ -47,6 +49,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

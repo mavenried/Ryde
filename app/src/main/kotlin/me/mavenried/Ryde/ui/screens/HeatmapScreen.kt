@@ -9,11 +9,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.LatLngBounds
 import com.google.maps.android.compose.*
+import me.mavenried.Ryde.R
+import me.mavenried.Ryde.ui.theme.LocalIsDarkTheme
 import me.mavenried.Ryde.ui.viewmodel.HeatmapViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -24,6 +27,8 @@ fun HeatmapScreen(
 ) {
     val trails by vm.allTrails.collectAsState()
     val loading by vm.loading.collectAsState()
+    val isDark = LocalIsDarkTheme.current
+    val context = LocalContext.current
 
     // Compute bounding box of all points to set initial camera
     val bounds = remember(trails) {
@@ -66,7 +71,10 @@ fun HeatmapScreen(
             GoogleMap(
                 modifier = Modifier.fillMaxSize(),
                 cameraPositionState = cameraState,
-                uiSettings = MapUiSettings(zoomControlsEnabled = false)
+                uiSettings = MapUiSettings(zoomControlsEnabled = false),
+                properties = MapProperties(
+                    mapStyleOptions = if (isDark) MapStyleOptions.loadRawResourceStyle(context, R.raw.map_style_dark) else null
+                )
             ) {
                 trails.forEach { trail ->
                     if (trail.size >= 2) {
