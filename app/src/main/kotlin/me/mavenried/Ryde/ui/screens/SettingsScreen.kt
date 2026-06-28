@@ -1,6 +1,7 @@
 package me.mavenried.Ryde.ui.screens
 
 import android.annotation.SuppressLint
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -10,10 +11,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.BluetoothSearching
+import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.Bluetooth
-import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Restore
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +27,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import me.mavenried.Ryde.data.db.AppDatabase
 import me.mavenried.Ryde.service.ActivityRecognitionReceiver
 import me.mavenried.Ryde.service.HeartRateManager
 import me.mavenried.Ryde.service.WeeklySummaryWorker
@@ -31,6 +38,9 @@ import me.mavenried.Ryde.util.FileLogger
 import me.mavenried.Ryde.util.PermissionHelper
 import me.mavenried.Ryde.util.UpdateManager
 import me.mavenried.Ryde.util.UserPrefs
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,9 +55,40 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
     var weeklySummaryEnabled by remember { mutableStateOf(UserPrefs.isWeeklyNotificationEnabled(context)) }
     var autoStartEnabled by remember { mutableStateOf(UserPrefs.isAutoStartEnabled(context)) }
     var showLogsDialog by remember { mutableStateOf(false) }
+    var showRestoreConfirm by remember { mutableStateOf(false) }
     val updateCheckState by UpdateManager.checkState.collectAsState()
     val updateInfo by UpdateManager.updateInfo.collectAsState()
+    val scope = rememberCoroutineScope()
     var hrDeviceName by remember { mutableStateOf(UserPrefs.getHrDeviceName(context)) }
+
+    val backupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val dbFile = context.getDatabasePath("ryde.db")
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        dbFile.inputStream().use { it.copyTo(out) }
+                    }
+                }.isSuccess
+            }
+            Toast.makeText(context,
+                if (ok) "Backup saved" else "Backup failed",
+                Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    var pendingRestoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    val restoreLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            pendingRestoreUri = uri
+            showRestoreConfirm = true
+        }
+    }
     var showHrScanDialog by remember { mutableStateOf(false) }
     val hrScanResults by HeartRateManager.scanResults.collectAsState()
     val hrConnected by HeartRateManager.connected.collectAsState()
@@ -69,6 +110,42 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
 
     if (showLogsDialog) {
         LogsDialog(onDismiss = { showLogsDialog = false })
+    }
+
+    if (showRestoreConfirm) {
+        AlertDialog(
+            onDismissRequest = { showRestoreConfirm = false },
+            title = { Text("Restore backup?") },
+            text = { Text("This will replace all current rides and data with the backup. The app will restart.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showRestoreConfirm = false
+                    val uri = pendingRestoreUri ?: return@TextButton
+                    scope.launch {
+                        val ok = withContext(Dispatchers.IO) {
+                            runCatching {
+                                val dbFile = context.getDatabasePath("ryde.db")
+                                AppDatabase.closeInstance()
+                                context.contentResolver.openInputStream(uri)?.use { input ->
+                                    dbFile.outputStream().use { input.copyTo(it) }
+                                }
+                                // Delete WAL/SHM so Room opens cleanly
+                                context.getDatabasePath("ryde.db-wal").delete()
+                                context.getDatabasePath("ryde.db-shm").delete()
+                            }.isSuccess
+                        }
+                        if (ok) {
+                            android.os.Process.killProcess(android.os.Process.myPid())
+                        } else {
+                            Toast.makeText(context, "Restore failed", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }) { Text("Restore", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestoreConfirm = false }) { Text("Cancel") }
+            }
+        )
     }
     if (showHrScanDialog) {
         HrScanDialog(
@@ -310,6 +387,44 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
                     Text("Scan for devices")
                 }
             }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text("Data", style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        val stamp = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())
+                        backupLauncher.launch("Ryde_backup_$stamp.db")
+                    },
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(16.dp)
+                ) {
+                    Icon(Icons.Rounded.Backup, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Backup")
+                }
+                OutlinedButton(
+                    onClick = { restoreLauncher.launch(arrayOf("application/octet-stream", "*/*")) },
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(16.dp)
+                ) {
+                    Icon(Icons.Rounded.Restore, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Restore")
+                }
+            }
+
+            Text(
+                "Backup saves all rides to a file. Restore replaces all data and restarts the app.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+            )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
