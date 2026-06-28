@@ -27,9 +27,29 @@ android {
         manifestPlaceholders["MAPS_API_KEY"] = localProps.getProperty("MAPS_API_KEY", "")
     }
 
+    val keystorePath = System.getenv("KEYSTORE_PATH")
+    val keystorePass = System.getenv("KEYSTORE_PASS")
+    val keyAlias = System.getenv("KEY_ALIAS")
+    val keyPass = System.getenv("KEY_PASS")
+    val hasSigningEnv = keystorePath != null && keystorePass != null && keyAlias != null
+
+    if (hasSigningEnv) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(keystorePath!!)
+                storePassword = keystorePass
+                this.keyAlias = keyAlias
+                keyPassword = keyPass ?: keystorePass
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasSigningEnv)
+                signingConfigs.getByName("release")
+            else
+                signingConfigs.getByName("debug")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

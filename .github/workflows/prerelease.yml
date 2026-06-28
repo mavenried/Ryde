@@ -30,11 +30,19 @@ jobs:
       - name: Write local.properties
         run: echo "MAPS_API_KEY=${{ secrets.MAPS_API_KEY }}" >> local.properties
 
+      - name: Decode keystore
+        run: echo "${{ secrets.KEYSTORE_B64 }}" | base64 -d > ${{ github.workspace }}/ryde-release.jks
+
       - name: Make gradlew executable
         run: chmod +x gradlew
 
       - name: Build release APK
         run: ./gradlew assembleRelease
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/ryde-release.jks
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.KEYSTORE_PASS }}
 
       - name: Rename APK
         run: mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/Ryde.apk
