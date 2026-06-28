@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.BluetoothSearching
 import androidx.compose.material.icons.rounded.Bluetooth
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material3.*
@@ -25,6 +26,7 @@ import me.mavenried.Ryde.service.ActivityRecognitionReceiver
 import me.mavenried.Ryde.service.HeartRateManager
 import me.mavenried.Ryde.service.WeeklySummaryWorker
 import me.mavenried.Ryde.util.FileLogger
+import me.mavenried.Ryde.util.UpdateManager
 import me.mavenried.Ryde.util.UserPrefs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,6 +42,8 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
     var weeklySummaryEnabled by remember { mutableStateOf(UserPrefs.isWeeklyNotificationEnabled(context)) }
     var autoStartEnabled by remember { mutableStateOf(UserPrefs.isAutoStartEnabled(context)) }
     var showLogsDialog by remember { mutableStateOf(false) }
+    val updateCheckState by UpdateManager.checkState.collectAsState()
+    val updateInfo by UpdateManager.updateInfo.collectAsState()
     var hrDeviceName by remember { mutableStateOf(UserPrefs.getHrDeviceName(context)) }
     var showHrScanDialog by remember { mutableStateOf(false) }
     val hrScanResults by HeartRateManager.scanResults.collectAsState()
@@ -296,6 +300,27 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
 
             Text("Diagnostics", style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary)
+
+            OutlinedButton(
+                onClick = { UpdateManager.checkAsync() },
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(16.dp),
+                enabled = updateCheckState != UpdateManager.CheckState.CHECKING,
+            ) {
+                if (updateCheckState == UpdateManager.CheckState.CHECKING) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Rounded.SystemUpdate, contentDescription = null)
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(when {
+                    updateCheckState == UpdateManager.CheckState.CHECKING -> "Checking…"
+                    updateInfo != null -> "Update available: ${updateInfo!!.version}"
+                    updateCheckState == UpdateManager.CheckState.UP_TO_DATE -> "Up to date"
+                    updateCheckState == UpdateManager.CheckState.ERROR -> "Check failed — tap to retry"
+                    else -> "Check for updates"
+                })
+            }
 
             OutlinedButton(
                 onClick = { showLogsDialog = true },

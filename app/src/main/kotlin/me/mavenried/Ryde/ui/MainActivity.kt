@@ -28,9 +28,8 @@ import me.mavenried.Ryde.service.TrackingState
 import me.mavenried.Ryde.ui.components.UpdateDialog
 import me.mavenried.Ryde.ui.nav.AppNavigation
 import me.mavenried.Ryde.ui.theme.RydeTheme
-import me.mavenried.Ryde.util.UpdateChecker
-import me.mavenried.Ryde.util.UpdateInfo
 import me.mavenried.Ryde.util.UpdateInstaller
+import me.mavenried.Ryde.util.UpdateManager
 import me.mavenried.Ryde.util.UserPrefs
 
 class MainActivity : ComponentActivity() {
@@ -47,11 +46,14 @@ class MainActivity : ComponentActivity() {
         requestInitialPermissions()
         setContent {
             val scope = rememberCoroutineScope()
-            var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+            val updateInfo by UpdateManager.updateInfo.collectAsState()
             var downloadProgress by remember { mutableFloatStateOf(-1f) }
             var downloadReady by remember { mutableStateOf(false) }
 
-            LaunchedEffect(Unit) { updateInfo = UpdateChecker.checkForUpdate() }
+            LaunchedEffect(Unit) { UpdateManager.checkAsync() }
+            LaunchedEffect(updateInfo) {
+                if (updateInfo == null) { downloadProgress = -1f; downloadReady = false }
+            }
 
             val theme by UserPrefs.themeFlow.collectAsState()
             val isMetric by UserPrefs.metricsFlow.collectAsState()
@@ -100,7 +102,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             onInstall = { UpdateInstaller.install(this@MainActivity) },
-                            onDismiss = { updateInfo = null },
+                            onDismiss = { UpdateManager.dismiss() },
                         )
                     }
                 }

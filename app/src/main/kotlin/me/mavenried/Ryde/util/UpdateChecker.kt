@@ -17,14 +17,17 @@ object UpdateChecker {
     private const val GITHUB_OWNER = "mavenried"
     private const val GITHUB_REPO = "Ryde"
 
-    suspend fun checkForUpdate(): UpdateInfo? = withContext(Dispatchers.IO) {
+    // Returns Result.success(UpdateInfo) if newer, Result.success(null) if up-to-date,
+    // Result.failure if network/parse error.
+    suspend fun checkForUpdate(): Result<UpdateInfo?> = withContext(Dispatchers.IO) {
         runCatching {
             val conn = URL("https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/releases/latest")
                 .openConnection() as HttpURLConnection
             conn.connectTimeout = 5_000
             conn.readTimeout = 10_000
             conn.setRequestProperty("Accept", "application/vnd.github+json")
-            if (conn.responseCode != 200) return@runCatching null
+            val code = conn.responseCode
+            check(code == 200) { "HTTP $code" }
 
             val json = JSONObject(conn.inputStream.bufferedReader().readText())
             val tag = json.getString("tag_name").trimStart('v')
@@ -34,10 +37,12 @@ object UpdateChecker {
                 .map { assets.getJSONObject(it) }
                 .firstOrNull { it.getString("name").endsWith(".apk") }
                 ?.getString("browser_download_url")
-                ?: return@runCatching null
 
-            if (isNewer(tag, BuildConfig.VERSION_NAME)) UpdateInfo(tag, apkUrl, notes) else null
-        }.getOrNull()
+            if (apkUrl != null && isNewer(tag, BuildConfig.VERSION_NAME))
+                UpdateInfo(tag, apkUrl, notes)
+            else
+                null
+        }
     }
 
     private fun isNewer(remote: String, current: String): Boolean {
