@@ -1,6 +1,8 @@
 package me.mavenried.Ryde.ui.screens
 
 import android.annotation.SuppressLint
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -26,6 +28,7 @@ import me.mavenried.Ryde.service.ActivityRecognitionReceiver
 import me.mavenried.Ryde.service.HeartRateManager
 import me.mavenried.Ryde.service.WeeklySummaryWorker
 import me.mavenried.Ryde.util.FileLogger
+import me.mavenried.Ryde.util.PermissionHelper
 import me.mavenried.Ryde.util.UpdateManager
 import me.mavenried.Ryde.util.UserPrefs
 
@@ -48,6 +51,14 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
     var showHrScanDialog by remember { mutableStateOf(false) }
     val hrScanResults by HeartRateManager.scanResults.collectAsState()
     val hrConnected by HeartRateManager.connected.collectAsState()
+    val bleLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        if (grants.values.all { it }) {
+            HeartRateManager.startScan(context)
+            showHrScanDialog = true
+        }
+    }
 
     val displayValue = remember(useLbs.value, weightKg.value) {
         if (useLbs.value) "%.1f".format(UserPrefs.kgToLbs(weightKg.value))
@@ -284,8 +295,12 @@ fun SettingsScreen(onNavigateBack: () -> Unit) {
                 }
                 OutlinedButton(
                     onClick = {
-                        HeartRateManager.startScan(context)
-                        showHrScanDialog = true
+                        if (PermissionHelper.hasBlePermissions(context)) {
+                            HeartRateManager.startScan(context)
+                            showHrScanDialog = true
+                        } else {
+                            bleLauncher.launch(PermissionHelper.blePermissions())
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(16.dp)
